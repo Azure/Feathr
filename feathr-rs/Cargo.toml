@@ -1,0 +1,49 @@
+[package]
+name = "feathr"
+version = "0.2.4"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4"
+thiserror = "1"
+bytes = "1"
+regex = "1"
+chrono = "0.4"
+futures = "0.3"
+uuid = { version = "1", features = ["v4", "serde"] }
+async-trait = "0.1.53"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+pin-project = "1"
+serde = { version = "1", features = ["derive", "rc"], default-features = false }
+serde_json = "1"
+serde_yaml = "0.8"
+reqwest = { version = "0.11", features = ["multipart", "stream", "json", "rustls-tls"], default-features = false }
+indexmap = { version = "1", features = ["serde"] }
+oauth2 = { version = "4", features = ["rustls-tls"], default-features = false }
+azure_core = { git = "https://github.com/windoze/azure-sdk-for-rust.git", features = ["enable_reqwest_rustls"], default-features = false }
+azure_identity = { git = "https://github.com/windoze/azure-sdk-for-rust.git", features = ["enable_reqwest_rustls"], default-features = false }
+azure_storage = { git = "https://github.com/windoze/azure-sdk-for-rust.git", features = ["enable_reqwest_rustls"], default-features = false }
+azure_storage_datalake = { git = "https://github.com/windoze/azure-sdk-for-rust.git", features = ["enable_reqwest_rustls"], default-features = false }
+azure_security_keyvault = { git = "https://github.com/windoze/azure-sdk-for-rust.git", default-features = false }
+handlebars = "4"
+base64 = "0.13"
+openssl = { version = "0.10", features = ["vendored"] }
+dbfs-client = "0.1"
+
+[dev-dependencies]
+dotenv = "0.15"
+tokio = { version = "1", features = ["full"] }
+env_logger = "0.9"
+rand = "0.8"
+
+[features]
+default = []
+rustls = [
+    "azure_core/enable_reqwest_rustls",
+    "azure_identity/enable_reqwest_rustls",
+    "azure_storage/enable_reqwest_rustls",
+    "azure_storage_datalake/enable_reqwest_rustls",
+]

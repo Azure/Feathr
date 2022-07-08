@@ -1,0 +1,12 @@
+[workspace]
+
+members = [
+    "common-utils",
+    "feathr-registry",
+    "registry-provider",
+    "sql-provider",
+    "registry-api",
+    "registry-cli",
+    "raft-registry",
+]
+

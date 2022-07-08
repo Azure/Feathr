@@ -1,14 +1,12 @@
-# Project
+# Azure Feathr
 
-> This repo has been populated by an initial template to help get you started. Please
-> make sure to update the content to build a great experience for community-building.
+This repo contains supplemental tools and libs for [LinkedIn Feathr](https://github.com/linkedin/feathr) project.
 
-As the maintainer of this project, please make a few updates:
+The repo has following contents:
 
-- Improving this README.MD file to provide a great experience
-- Updating SUPPORT.MD with content about this project's support experience
-- Understanding the security reporting process in SECURITY.MD
-- Remove this section from the README
+- `feathr-rs`, the Rust library for the Feathr project.
+- `python`, the Python wrapper for the Rust Feathr library, which can also be considered as an alternative to the Python client in the main Feathr repo.
+- `registry`, the Feathr registry server, backed by SQL server, with clustering support.
 
 ## Contributing
 

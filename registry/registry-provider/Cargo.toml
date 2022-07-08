@@ -1,0 +1,16 @@
+[package]
+name = "registry-provider"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4"
+async-trait = "0.1"
+thiserror = "1"
+tokio = "1"
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }

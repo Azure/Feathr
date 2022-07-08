@@ -1,0 +1,49 @@
+[package]
+name = "sql-provider"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4"
+async-trait = "0.1"
+anyhow = "1"
+thiserror = "1"
+itertools = "0.10"
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1.8"
+petgraph = { version = "0.6", features = ["default", "serde-1"] }
+tantivy = "0.18"
+tiberius = { version = "0.9", features = [
+    "tds73",
+    "tokio-rustls",
+    "sql-browser-tokio",
+], default-features = false, optional = true }
+bb8 = { version = "0.8", optional = true }
+bb8-tiberius = { version = "0.11", features = [
+    "default",
+    "tls",
+], default-features = false, optional = true }
+sqlx = { version = "0.6.0", features = [
+    "runtime-tokio-rustls",
+    "any",
+    "uuid",
+], default-features = false, optional = true }
+
+common-utils = { path = "../common-utils" }
+registry-provider = { path = "../registry-provider" }
+
+[dev-dependencies]
+rand = "0.8"
+
+[features]
+default = ["mssql", "ossdbms"]
+mssql = ["tiberius", "bb8", "bb8-tiberius"]
+ossdbms = ["mysql", "postgres", "sqlite"]
+mysql = ["sqlx/mysql"]
+postgres = ["sqlx/postgres"]
+sqlite = ["sqlx/sqlite"]

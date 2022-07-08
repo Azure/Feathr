@@ -1,0 +1,21 @@
+[package]
+name = "feathrs"
+version = "0.2.4"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "feathrs"
+crate-type = ["cdylib"]
+
+[dependencies]
+log = "0.4"
+pyo3 = { version = "0.16", features = ["extension-module"] }
+pyo3-asyncio = { version = "0.16", features = ["attributes", "tokio-runtime"] }
+pyo3-log = "0.6"
+futures = "0.3"
+tokio = "1"
+chrono = "0.4"
+regex = "1"
+feathr = { git = "https://github.com/windoze/feathr-rs", tag = "v0.2.4" }
+# feathr = { path = "../feathr-rs" }
