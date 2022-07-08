@@ -31,7 +31,8 @@ jobs:
       with:
         push: true
         tags: xcacr.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_4da0dc091a964a20a1cbb1a8d1e4dff9 }}/xcacr/windoze/feathr-registry:${{ github.sha }}
-        file: ./Dockerfile
+        context: ./registry
+        # file: ./Dockerfile
 
   deploy:
     runs-on: ubuntu-latest

@@ -418,7 +418,6 @@ dependencies = [
 [[package]]
 name = "feathr"
 version = "0.2.4"
-source = "git+https://github.com/windoze/feathr-rs?tag=v0.2.4#e530c7394c621aee70c7174bb824ce4fd7e3c8cf"
 dependencies = [
  "async-trait",
  "azure_core",
