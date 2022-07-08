@@ -17,5 +17,4 @@ futures = "0.3"
 tokio = "1"
 chrono = "0.4"
 regex = "1"
-feathr = { git = "https://github.com/windoze/feathr-rs", tag = "v0.2.4" }
-# feathr = { path = "../feathr-rs" }
+feathr = { path = "../feathr-rs" }
