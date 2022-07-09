@@ -5,3 +5,4 @@ test-data/
 test-conf/
 .DS_Store
 .env
+.autoenv*
