@@ -17,6 +17,14 @@ pub enum EntityStatus {
     Deprecated,
 }
 
+fn default_version() -> u64 {
+    1
+}
+
+fn default_created_on() -> DateTime<Utc> {
+    Utc::now()
+}
+
 #[derive(Clone, Debug, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntityProperty {
@@ -28,8 +36,11 @@ pub struct EntityProperty {
     pub labels: Vec<String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub tags: HashMap<String, String>,
+    #[serde(default = "default_version")]
     pub version: u64,
+    #[serde(default)]
     pub created_by: String,
+    #[serde(default = "default_created_on")]
     pub created_on: DateTime<Utc>,
     #[serde(flatten)]
     pub attributes: Attributes,

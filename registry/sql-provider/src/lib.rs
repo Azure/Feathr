@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
-pub use database::{attach_storage, load_content, load_registry};
+pub use database::{attach_storage, load_content};
 pub use db_registry::Registry;
 use log::debug;
 use registry_provider::{

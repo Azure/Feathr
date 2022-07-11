@@ -53,7 +53,7 @@ async fn load_entities(
     conn: &mut PooledConnection<'static, ConnectionManager>,
 ) -> Result<Vec<EntityProperty>, anyhow::Error> {
     let entities_table =
-        std::env::var("MSSQL_ENTITY_TABLE").unwrap_or_else(|_| "entities".to_string());
+        std::env::var("ENTITY_TABLE").unwrap_or_else(|_| "entities".to_string());
     debug!("Loading entities from {}", entities_table);
     let x: Vec<EntityProperty> = conn
         .simple_query(format!("SELECT entity_content from {}", entities_table))
@@ -70,7 +70,7 @@ async fn load_entities(
 async fn load_edges(
     conn: &mut PooledConnection<'static, ConnectionManager>,
 ) -> Result<Vec<Edge>, anyhow::Error> {
-    let edges_table = std::env::var("MSSQL_EDGE_TABLE").unwrap_or_else(|_| "edges".to_string());
+    let edges_table = std::env::var("EDGE_TABLE").unwrap_or_else(|_| "edges".to_string());
     debug!("Loading edges from {}", edges_table);
     let x: Vec<Edge> = conn
         .simple_query(format!(
@@ -112,30 +112,11 @@ async fn connect() -> Result<PooledConnection<'static, ConnectionManager>, anyho
 }
 
 pub fn validate_condition() -> bool {
-    // TODO:
-    true
-}
-
-pub async fn load_registry() -> Result<Registry<EntityProperty>, anyhow::Error> {
-    debug!("Loading registry data from database");
-    let mut conn = connect().await?;
-    let edges = load_edges(&mut conn).await?;
-    let entities = load_entities(&mut conn).await?;
-    debug!(
-        "{} entities and {} edges loaded",
-        entities.len(),
-        edges.len()
-    );
-    let mut registry = Registry::load(
-        entities.into_iter().map(|e| e.into()),
-        edges.into_iter().map(|e| e.into()),
-    )
-    .await?;
-    registry
-        .external_storage
-        .push(Arc::new(RwLock::new(MsSqlStorage::default())));
-
-    Ok(registry)
+    if let Ok(conn_str) = std::env::var("CONNECTION_STR") {
+        tiberius::Config::from_ado_string(&conn_str).is_ok()
+    } else {
+        false
+    }
 }
 
 pub async fn load_content() -> Result<(Vec<Entity<EntityProperty>>, Vec<Edge>), anyhow::Error> {
@@ -178,8 +159,8 @@ impl MsSqlStorage {
 impl Default for MsSqlStorage {
     fn default() -> Self {
         Self::new(
-            &std::env::var("MSSQL_ENTITY_TABLE").unwrap_or_else(|_| "entities".to_string()),
-            &std::env::var("MSSQL_EDGE_TABLE").unwrap_or_else(|_| "edges".to_string()),
+            &std::env::var("ENTITY_TABLE").unwrap_or_else(|_| "entities".to_string()),
+            &std::env::var("EDGE_TABLE").unwrap_or_else(|_| "edges".to_string()),
         )
     }
 }

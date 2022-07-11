@@ -25,7 +25,7 @@ openraft = { git = "https://github.com/windoze/openraft.git", features = ["serde
 
 common-utils = { path = "../common-utils" }
 registry-provider = { path = "../registry-provider" }
-sql-provider = { path = "../sql-provider" }
+sql-provider = { path = "../sql-provider", features = ["default"] }
 registry-api = { path = "../registry-api" }
 raft-registry = { path = "../raft-registry" }
 

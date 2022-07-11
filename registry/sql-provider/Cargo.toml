@@ -32,6 +32,7 @@ sqlx = { version = "0.6.0", features = [
     "runtime-tokio-rustls",
     "any",
     "uuid",
+    "macros",
 ], default-features = false, optional = true }
 
 common-utils = { path = "../common-utils" }
@@ -43,7 +44,6 @@ rand = "0.8"
 [features]
 default = ["mssql", "ossdbms"]
 mssql = ["tiberius", "bb8", "bb8-tiberius"]
-ossdbms = ["mysql", "postgres", "sqlite"]
+ossdbms = ["mysql", "postgres"]
 mysql = ["sqlx/mysql"]
 postgres = ["sqlx/postgres"]
-sqlite = ["sqlx/sqlite"]
