@@ -1,4 +1,5 @@
 use std::{
+    convert::Infallible,
     fs::{read_dir, remove_dir_all},
     path::PathBuf,
     pin::Pin,
@@ -13,11 +14,13 @@ use log::{debug, info};
 use poem::{
     listener::TcpListener,
     middleware::{Cors, Tracing},
+    web::Json,
     EndpointExt, Route, Server,
 };
 use poem_openapi::OpenApiService;
 use raft_registry::{
-    management_routes, raft_routes, FeathrApiV2, NodeConfig, RaftRegistryApp, RaftSequencer, FeathrApiV1,
+    management_routes, raft_routes, FeathrApiV1, FeathrApiV2, NodeConfig, RaftRegistryApp,
+    RaftSequencer,
 };
 use sql_provider::attach_storage;
 
@@ -174,19 +177,26 @@ async fn main() -> Result<(), anyhow::Error> {
         .with(Tracing)
         .with(RaftSequencer::new(app.store.clone()))
         .with(Cors::new());
-    
-    let docs_route = Route::new()
-        .nest("/v1", ui_v1)
-        .nest("/v2", ui_v2);
-    
+
+    let docs_route = Route::new().nest("/v1", ui_v1).nest("/v2", ui_v2);
+
     let spec_route = Route::new()
-    .at("/v1", poem::endpoint::make_sync(move |_| spec_v1.clone()))
-    .at("/v2", poem::endpoint::make_sync(move |_| spec_v2.clone()));
+        .at("/v1", poem::endpoint::make_sync(move |_| spec_v1.clone()))
+        .at("/v2", poem::endpoint::make_sync(move |_| spec_v2.clone()));
 
     let route = management_routes(raft_routes(Route::new()))
         .nest("spec", spec_route)
         .nest("docs", docs_route)
-        .nest(api_base, api_route,)
+        .nest(api_base, api_route)
+        .nest(
+            "version",
+            poem::endpoint::make_sync(move |_| {
+                let version = option_env!("CARGO_PKG_VERSION").unwrap_or("<unknown>");
+                Result::<_, Infallible>::Ok(Json(serde_json::json!({
+                    "version": version,
+                })))
+            }),
+        )
         .nest(
             "/",
             spa_endpoint::SpaEndpoint::new("./static-files", "index.html"),
@@ -220,7 +230,8 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         Ok(())
     };
-    let tasks: Vec<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>> = vec![Box::pin(svc_task), Box::pin(raft_task)];
+    let tasks: Vec<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>> =
+        vec![Box::pin(svc_task), Box::pin(raft_task)];
     join_all(tasks.into_iter())
         .await
         .into_iter()
