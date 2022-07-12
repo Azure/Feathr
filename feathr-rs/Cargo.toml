@@ -23,11 +23,11 @@ serde_yaml = "0.8"
 reqwest = { version = "0.11", features = ["multipart", "stream", "json", "rustls-tls"], default-features = false }
 indexmap = { version = "1", features = ["serde"] }
 oauth2 = { version = "4", features = ["rustls-tls"], default-features = false }
-azure_core = { git = "https://github.com/windoze/azure-sdk-for-rust.git", features = ["enable_reqwest_rustls"], default-features = false }
-azure_identity = { git = "https://github.com/windoze/azure-sdk-for-rust.git", features = ["enable_reqwest_rustls"], default-features = false }
-azure_storage = { git = "https://github.com/windoze/azure-sdk-for-rust.git", features = ["enable_reqwest_rustls"], default-features = false }
-azure_storage_datalake = { git = "https://github.com/windoze/azure-sdk-for-rust.git", features = ["enable_reqwest_rustls"], default-features = false }
-azure_security_keyvault = { git = "https://github.com/windoze/azure-sdk-for-rust.git", default-features = false }
+azure_core = { version = "0.3", features = ["enable_reqwest_rustls"], default-features = false }
+azure_identity = { version = "0.4", features = ["enable_reqwest_rustls"], default-features = false }
+azure_storage = { version = "0.4", features = ["enable_reqwest_rustls"], default-features = false }
+azure_storage_datalake = { version = "0.4", features = ["enable_reqwest_rustls"], default-features = false }
+azure_security_keyvault = { version = "0.3", default-features = false }
 handlebars = "4"
 base64 = "0.13"
 openssl = { version = "0.10", features = ["vendored"] }

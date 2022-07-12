@@ -53,9 +53,6 @@ pub enum Error {
     LivyClientError(#[from] crate::livy_client::LivyClientError),
 
     #[error(transparent)]
-    AzureStorageError(#[from] azure_storage::Error),
-
-    #[error(transparent)]
     DbfsError(#[from] dbfs_client::DbfsError),
 
     #[error("Databricks API Error, Code={0}, Message='{1}'")]
@@ -89,7 +86,7 @@ pub enum Error {
     KeyVaultNotConfigured,
     
     #[error(transparent)]
-    KeyVaultError(#[from] azure_core::error::Error),
+    AzureError(#[from] azure_core::error::Error),
 
     #[error("Invalid Time Range {0} - {1}")]
     InvalidTimeRange(DateTime<Utc>, DateTime<Utc>),
