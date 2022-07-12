@@ -449,6 +449,7 @@ impl TryInto<registry_provider::DerivedFeatureDef> for DerivedFeatureDef {
 #[derive(Clone, Debug, Serialize, Object)]
 pub struct CreationResponse {
     pub guid: String,
+    pub version: u64,
 }
 
 impl TryInto<Uuid> for CreationResponse {
@@ -459,10 +460,11 @@ impl TryInto<Uuid> for CreationResponse {
     }
 }
 
-impl From<Uuid> for CreationResponse {
-    fn from(id: Uuid) -> Self {
+impl From<(Uuid, u64)> for CreationResponse {
+    fn from((id, version): (Uuid, u64)) -> Self {
         Self {
             guid: id.to_string(),
+            version,
         }
     }
 }

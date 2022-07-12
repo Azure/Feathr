@@ -162,7 +162,7 @@ pub enum FeathrApiResponse {
     Error(ApiError),
 
     Unit,
-    Uuid(Uuid),
+    UuidAndVersion(Uuid, u64),
     EntityNames(Vec<String>),
     Entity(Entity),
     Entities(Entities),
@@ -170,10 +170,10 @@ pub enum FeathrApiResponse {
 }
 
 impl FeathrApiResponse {
-    pub fn into_uuid(self) -> poem::Result<Uuid> {
+    pub fn into_uuid_and_version(self) -> poem::Result<(Uuid, u64)> {
         match self {
             FeathrApiResponse::Error(e) => Err(e.into()),
-            FeathrApiResponse::Uuid(v) => Ok(v),
+            FeathrApiResponse::UuidAndVersion(id, version) => Ok((id, version)),
             _ => panic!("Shouldn't reach here"),
         }
     }
@@ -222,9 +222,9 @@ impl From<()> for FeathrApiResponse {
     }
 }
 
-impl From<Uuid> for FeathrApiResponse {
-    fn from(v: Uuid) -> Self {
-        Self::Uuid(v)
+impl From<(Uuid, u64)> for FeathrApiResponse {
+    fn from((id, version): (Uuid, u64)) -> Self {
+        Self::UuidAndVersion(id, version)
     }
 }
 

@@ -166,12 +166,12 @@ where
     }
 
     // Create new project
-    async fn new_project(&mut self, definition: &ProjectDef) -> Result<Uuid, RegistryError> {
+    async fn new_project(&mut self, definition: &ProjectDef) -> Result<(Uuid, u64), RegistryError> {
         // TODO: Pre-flight validation
         let mut prop = EntityProp::new_project(definition)?;
         match self.get_all_versions(&definition.qualified_name).last() {
             // It makes no sense to create a new version of a project
-            Some(e) => Ok(e.id),
+            Some(e) => Ok((e.id, e.version)),
             None => {
                 prop.set_version(1);
                 let project_id = self
@@ -184,7 +184,7 @@ where
                     )
                     .await?;
                 self.index_entity(project_id, true)?;
-                Ok(project_id)
+                Ok((project_id, 1))
             }
         }
     }
@@ -194,18 +194,19 @@ where
         &mut self,
         project_id: Uuid,
         definition: &SourceDef,
-    ) -> Result<Uuid, RegistryError> {
+    ) -> Result<(Uuid, u64), RegistryError> {
         // TODO: Pre-flight validation
         let mut prop = EntityProp::new_source(definition)?;
 
         for v in self.get_all_versions(&definition.qualified_name) {
             if v.properties == prop {
                 // Found an existing version that is same as the requested one
-                return Ok(v.id);
+                return Ok((v.id, v.version));
             }
         }
 
-        prop.set_version(self.get_next_version_number(&definition.qualified_name));
+        let version = self.get_next_version_number(&definition.qualified_name);
+        prop.set_version(version);
 
         let source_id = self
             .insert_entity(
@@ -221,7 +222,7 @@ where
             .await?;
 
         self.index_entity(source_id, true)?;
-        Ok(source_id)
+        Ok((source_id, version))
     }
 
     // Create new anchor under specified project
@@ -229,7 +230,7 @@ where
         &mut self,
         project_id: Uuid,
         definition: &AnchorDef,
-    ) -> Result<Uuid, RegistryError> {
+    ) -> Result<(Uuid, u64), RegistryError> {
         if self.get_entity_by_id(definition.source_id).is_none() {
             debug!(
                 "Source {} not found, cannot create anchor",
@@ -258,12 +259,13 @@ where
             })
         {
             // Found existing anchor with same name and source
-            return Ok(e.id);
+            return Ok((e.id, e.version));
         }
 
         // Create new version
         let mut prop = EntityProp::new_anchor(definition)?;
-        prop.set_version(self.get_next_version_number(&definition.qualified_name));
+        let version = self.get_next_version_number(&definition.qualified_name);
+        prop.set_version(version);
 
         let anchor_id = self
             .insert_entity(
@@ -282,7 +284,7 @@ where
             .await?;
 
         self.index_entity(anchor_id, true)?;
-        Ok(anchor_id)
+        Ok((anchor_id, version))
     }
 
     // Create new anchor feature under specified anchor
@@ -291,7 +293,7 @@ where
         project_id: Uuid,
         anchor_id: Uuid,
         definition: &AnchorFeatureDef,
-    ) -> Result<Uuid, RegistryError> {
+    ) -> Result<(Uuid, u64), RegistryError> {
         // TODO: Pre-flight validation
         let mut prop = EntityProp::new_anchor_feature(definition)?;
 
@@ -309,10 +311,11 @@ where
             })
         {
             // Found existing anchor with same name and source
-            return Ok(e.id);
+            return Ok((e.id, e.version));
         }
 
-        prop.set_version(self.get_next_version_number(&definition.qualified_name));
+        let version = self.get_next_version_number(&definition.qualified_name);
+        prop.set_version(version);
         let feature_id = self
             .insert_entity(
                 definition.id,
@@ -336,7 +339,7 @@ where
         }
 
         self.index_entity(feature_id, true)?;
-        Ok(feature_id)
+        Ok((feature_id, version))
     }
 
     // Create new derived feature under specified project
@@ -344,7 +347,7 @@ where
         &mut self,
         project_id: Uuid,
         definition: &DerivedFeatureDef,
-    ) -> Result<Uuid, RegistryError> {
+    ) -> Result<(Uuid, u64), RegistryError> {
         let input: HashSet<Uuid> = definition
             .input_anchor_features
             .iter()
@@ -382,10 +385,11 @@ where
                 upstream == input && prop == e.properties
             })
         {
-            return Ok(e.id);
+            return Ok((e.id, e.version));
         }
 
-        prop.set_version(self.get_next_version_number(&definition.qualified_name));
+        let version = self.get_next_version_number(&definition.qualified_name);
+        prop.set_version(version);
         let feature_id = self
             .insert_entity(
                 definition.id,
@@ -408,7 +412,7 @@ where
         }
 
         self.index_entity(feature_id, true)?;
-        Ok(feature_id)
+        Ok((feature_id, version))
     }
 
     async fn delete_entity(&mut self, id: Uuid) -> Result<(), RegistryError> {

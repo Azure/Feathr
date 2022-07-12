@@ -65,7 +65,7 @@ impl FeathrApiV1 {
         data.0
             .request(None, FeathrApiRequest::CreateProject { definition })
             .await
-            .into_uuid()
+            .into_uuid_and_version()
             .map(|v| Json(v.into()))
     }
 
@@ -176,7 +176,7 @@ impl FeathrApiV1 {
                 },
             )
             .await
-            .into_uuid()
+            .into_uuid_and_version()
             .map(|v| Json(v.into()))
     }
 
@@ -208,7 +208,7 @@ impl FeathrApiV1 {
                 },
             )
             .await
-            .into_uuid()
+            .into_uuid_and_version()
             .map(|v| Json(v.into()))
     }
 
@@ -270,7 +270,7 @@ impl FeathrApiV1 {
                 },
             )
             .await
-            .into_uuid()
+            .into_uuid_and_version()
             .map(|v| Json(v.into()))
     }
 
@@ -304,7 +304,7 @@ impl FeathrApiV1 {
                 },
             )
             .await
-            .into_uuid()
+            .into_uuid_and_version()
             .map(|v| Json(v.into()))
     }
 

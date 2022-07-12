@@ -109,7 +109,7 @@ where
     /**
      * Create new project
      */
-    async fn new_project(&mut self, definition: &ProjectDef) -> Result<Uuid, RegistryError>;
+    async fn new_project(&mut self, definition: &ProjectDef) -> Result<(Uuid, u64), RegistryError>;
 
     /**
      * Create new source under specified project
@@ -118,7 +118,7 @@ where
         &mut self,
         project_id: Uuid,
         definition: &SourceDef,
-    ) -> Result<Uuid, RegistryError>;
+    ) -> Result<(Uuid, u64), RegistryError>;
 
     /**
      * Create new anchor under specified project
@@ -127,7 +127,7 @@ where
         &mut self,
         project_id: Uuid,
         definition: &AnchorDef,
-    ) -> Result<Uuid, RegistryError>;
+    ) -> Result<(Uuid, u64), RegistryError>;
 
     /**
      * Create new anchor feature under specified anchor
@@ -137,7 +137,7 @@ where
         project_id: Uuid,
         anchor_id: Uuid,
         definition: &AnchorFeatureDef,
-    ) -> Result<Uuid, RegistryError>;
+    ) -> Result<(Uuid, u64), RegistryError>;
 
     /**
      * Create new derived feature under specified project
@@ -146,7 +146,7 @@ where
         &mut self,
         project_id: Uuid,
         definition: &DerivedFeatureDef,
-    ) -> Result<Uuid, RegistryError>;
+    ) -> Result<(Uuid, u64), RegistryError>;
 
     async fn delete_entity(&mut self, id: Uuid) -> Result<(), RegistryError>;
 
