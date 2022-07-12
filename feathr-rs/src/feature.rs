@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -9,7 +6,7 @@ use uuid::Uuid;
 
 use crate::{
     project::{FeathrProjectImpl, FeathrProjectModifier},
-    Error, FeatureType, Transformation, TypedKey, DerivedTransformation,
+    DerivedTransformation, Error, FeatureType, Transformation, TypedKey,
 };
 
 pub trait Feature
@@ -18,6 +15,7 @@ where
 {
     fn is_anchor_feature(&self) -> bool;
     fn get_id(&self) -> Uuid;
+    fn get_version(&self) -> u64;
     fn get_name(&self) -> String;
     fn get_type(&self) -> FeatureType;
     fn get_key(&self) -> Vec<TypedKey>;
@@ -35,12 +33,14 @@ pub struct AnchorFeature {
 impl AnchorFeature {
     pub async fn with_key(&self, group: &str, key_alias: &[&str]) -> Result<Self, Error> {
         self.owner
-            .insert_anchor(group, self.inner.with_key(key_alias)?).await
+            .insert_anchor(group, self.inner.with_key(key_alias)?)
+            .await
     }
 
     pub async fn as_feature(&self, group: &str, feature_alias: &str) -> Result<Self, Error> {
         self.owner
-            .insert_anchor(group, self.inner.as_feature(feature_alias)).await
+            .insert_anchor(group, self.inner.as_feature(feature_alias))
+            .await
     }
 }
 
@@ -51,6 +51,10 @@ impl Feature for AnchorFeature {
 
     fn get_id(&self) -> Uuid {
         self.inner.base.id
+    }
+
+    fn get_version(&self) -> u64 {
+        self.inner.base.version
     }
 
     fn get_name(&self) -> String {
@@ -70,7 +74,12 @@ impl Feature for AnchorFeature {
     }
 
     fn get_key_alias(&self) -> Vec<String> {
-        self.inner.key_alias.clone()
+        self.inner
+            .key_alias
+            .clone()
+            .into_iter()
+            .filter(|k| k != "NOT_NEEDED")
+            .collect()
     }
 
     fn get_registry_tags(&self) -> HashMap<String, String> {
@@ -98,12 +107,15 @@ pub struct DerivedFeature {
 
 impl DerivedFeature {
     pub async fn with_key(&self, key_alias: &[&str]) -> Result<Self, Error> {
-        self.owner.insert_derived(self.inner.with_key(key_alias)?).await
+        self.owner
+            .insert_derived(self.inner.with_key(key_alias)?)
+            .await
     }
 
     pub async fn as_feature(&self, feature_alias: &str) -> Result<Self, Error> {
         self.owner
-            .insert_derived(self.inner.as_feature(feature_alias)).await
+            .insert_derived(self.inner.as_feature(feature_alias))
+            .await
     }
 }
 
@@ -111,11 +123,15 @@ impl Feature for DerivedFeature {
     fn is_anchor_feature(&self) -> bool {
         false
     }
-    
+
     fn get_id(&self) -> Uuid {
         self.inner.base.id
     }
-    
+
+    fn get_version(&self) -> u64 {
+        self.inner.base.version
+    }
+
     fn get_name(&self) -> String {
         self.inner.base.name.clone()
     }
@@ -133,7 +149,12 @@ impl Feature for DerivedFeature {
     }
 
     fn get_key_alias(&self) -> Vec<String> {
-        self.inner.key_alias.clone()
+        self.inner
+            .key_alias
+            .clone()
+            .into_iter()
+            .filter(|k| k != "NOT_NEEDED")
+            .collect()
     }
 
     fn get_registry_tags(&self) -> HashMap<String, String> {
@@ -157,6 +178,8 @@ impl ToString for &DerivedFeature {
 pub(crate) struct FeatureBase {
     #[serde(skip)]
     pub(crate) id: Uuid,
+    #[serde(skip)]
+    pub(crate) version: u64,
     #[serde(skip)]
     pub(crate) name: String,
     #[serde(rename = "type", default)]
@@ -210,11 +233,15 @@ impl Feature for AnchorFeatureImpl {
     fn is_anchor_feature(&self) -> bool {
         true
     }
-    
+
     fn get_id(&self) -> Uuid {
         self.base.id
     }
-    
+
+    fn get_version(&self) -> u64 {
+        self.base.version
+    }
+
     fn get_name(&self) -> String {
         self.base.name.to_owned()
     }
@@ -232,7 +259,11 @@ impl Feature for AnchorFeatureImpl {
     }
 
     fn get_key_alias(&self) -> Vec<String> {
-        self.key_alias.to_owned()
+        self.key_alias
+            .to_owned()
+            .into_iter()
+            .filter(|k| k != "NOT_NEEDED")
+            .collect()
     }
 
     fn get_registry_tags(&self) -> HashMap<String, String> {
@@ -312,11 +343,15 @@ impl Feature for DerivedFeatureImpl {
     fn is_anchor_feature(&self) -> bool {
         false
     }
-    
+
     fn get_id(&self) -> Uuid {
         self.base.id
     }
-    
+
+    fn get_version(&self) -> u64 {
+        self.base.version
+    }
+
     fn get_name(&self) -> String {
         self.base.name.to_owned()
     }
@@ -334,7 +369,11 @@ impl Feature for DerivedFeatureImpl {
     }
 
     fn get_key_alias(&self) -> Vec<String> {
-        self.key_alias.to_owned()
+        self.key_alias
+            .to_owned()
+            .into_iter()
+            .filter(|k| k != "NOT_NEEDED")
+            .collect()
     }
 
     fn get_registry_tags(&self) -> HashMap<String, String> {

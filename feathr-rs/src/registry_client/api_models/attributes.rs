@@ -119,7 +119,7 @@ pub struct ProjectAttributes {
     pub tags: HashMap<String, String>,
 }
 
-impl TryInto<crate::project::FeathrProjectImpl> for (Uuid, ProjectAttributes) {
+impl TryInto<crate::project::FeathrProjectImpl> for (Uuid, u64, ProjectAttributes) {
     type Error = crate::Error;
 
     fn try_into(self) -> Result<crate::project::FeathrProjectImpl, Self::Error> {
@@ -127,13 +127,14 @@ impl TryInto<crate::project::FeathrProjectImpl> for (Uuid, ProjectAttributes) {
         Ok(crate::project::FeathrProjectImpl {
             owner: None,
             id: self.0,
-            name: self.1.name,
+            version: self.1,
+            name: self.2.name,
             anchor_groups: Default::default(),
             derivations: Default::default(),
             anchor_features: Default::default(),
             anchor_map: Default::default(),
             sources: Default::default(),
-            registry_tags: self.1.tags,
+            registry_tags: self.2.tags,
         })
     }
 }
@@ -155,14 +156,15 @@ pub struct SourceAttributes {
     pub tags: HashMap<String, String>,
 }
 
-impl TryInto<crate::source::SourceImpl> for (Uuid, SourceAttributes) {
+impl TryInto<crate::source::SourceImpl> for (Uuid, u64, SourceAttributes) {
     type Error = crate::Error;
 
     fn try_into(self) -> Result<crate::source::SourceImpl, Self::Error> {
-        Ok(if self.1.name == "PASSTHROUGH" {
+        Ok(if self.2.name == "PASSTHROUGH" {
             SourceImpl {
                 id: self.0,
-                name: self.1.name,
+                version: 1,
+                name: self.2.name,
                 location: crate::SourceLocation::InputContext,
                 time_window_parameters: None,
                 preprocessing: None,
@@ -171,16 +173,17 @@ impl TryInto<crate::source::SourceImpl> for (Uuid, SourceAttributes) {
         } else {
             SourceImpl {
                 id: self.0,
-                name: self.1.name,
-                location: crate::SourceLocation::Hdfs { path: self.1.path },
-                time_window_parameters: self.1.event_timestamp_column.map(|c| {
+                version: self.1,
+                name: self.2.name,
+                location: crate::SourceLocation::Hdfs { path: self.2.path },
+                time_window_parameters: self.2.event_timestamp_column.map(|c| {
                     crate::TimeWindowParameters {
                         timestamp_column: c,
-                        timestamp_column_format: self.1.timestamp_format.unwrap_or_default(),
+                        timestamp_column_format: self.2.timestamp_format.unwrap_or_default(),
                     }
                 }),
-                preprocessing: self.1.preprocessing,
-                registry_tags: self.1.tags,
+                preprocessing: self.2.preprocessing,
+                registry_tags: self.2.tags,
             }
         })
     }
@@ -197,16 +200,17 @@ pub struct AnchorAttributes {
     pub tags: HashMap<String, String>,
 }
 
-impl TryInto<crate::project::AnchorGroupImpl> for (Uuid, AnchorAttributes) {
+impl TryInto<crate::project::AnchorGroupImpl> for (Uuid, u64, AnchorAttributes) {
     type Error = crate::Error;
 
     fn try_into(self) -> Result<crate::project::AnchorGroupImpl, Self::Error> {
         // Generated AnchorGroupImpl only contains base attributes, without contained features.
         Ok(crate::project::AnchorGroupImpl {
             id: self.0,
-            name: self.1.name,
+            version: self.1,
+            name: self.2.name,
             source: Default::default(),
-            registry_tags: self.1.tags,
+            registry_tags: self.2.tags,
         })
     }
 }
@@ -223,11 +227,11 @@ pub struct AnchorFeatureAttributes {
     pub tags: HashMap<String, String>,
 }
 
-impl TryInto<crate::feature::AnchorFeatureImpl> for (Uuid, AnchorFeatureAttributes) {
+impl TryInto<crate::feature::AnchorFeatureImpl> for (Uuid, u64, AnchorFeatureAttributes) {
     type Error = crate::Error;
 
     fn try_into(self) -> Result<crate::feature::AnchorFeatureImpl, Self::Error> {
-        let key: Vec<crate::TypedKey> = self.1.key.into_iter().map(|k| k.into()).collect();
+        let key: Vec<crate::TypedKey> = self.2.key.into_iter().map(|k| k.into()).collect();
         let key_alias = key
             .iter()
             .map(|k| {
@@ -240,14 +244,15 @@ impl TryInto<crate::feature::AnchorFeatureImpl> for (Uuid, AnchorFeatureAttribut
         Ok(crate::feature::AnchorFeatureImpl {
             base: FeatureBase {
                 id: self.0,
-                name: self.1.name.clone(),
-                feature_type: self.1.type_.into(),
+                version: self.1,
+                name: self.2.name.clone(),
+                feature_type: self.2.type_.into(),
                 key,
-                feature_alias: self.1.name,
-                registry_tags: self.1.tags,
+                feature_alias: self.2.name,
+                registry_tags: self.2.tags,
             },
             key_alias,
-            transform: self.1.transformation.try_into()?,
+            transform: self.2.transformation.try_into()?,
         })
     }
 }
@@ -266,11 +271,11 @@ pub struct DerivedFeatureAttributes {
     pub tags: HashMap<String, String>,
 }
 
-impl TryInto<crate::feature::DerivedFeatureImpl> for (Uuid, DerivedFeatureAttributes) {
+impl TryInto<crate::feature::DerivedFeatureImpl> for (Uuid, u64, DerivedFeatureAttributes) {
     type Error = crate::Error;
 
     fn try_into(self) -> Result<crate::feature::DerivedFeatureImpl, Self::Error> {
-        let key: Vec<crate::TypedKey> = self.1.key.into_iter().map(|k| k.into()).collect();
+        let key: Vec<crate::TypedKey> = self.2.key.into_iter().map(|k| k.into()).collect();
         let key_alias = key
             .iter()
             .map(|k| {
@@ -280,15 +285,16 @@ impl TryInto<crate::feature::DerivedFeatureImpl> for (Uuid, DerivedFeatureAttrib
                     .to_owned()
             })
             .collect();
-        let t: Transformation = self.1.transformation.try_into()?;
+        let t: Transformation = self.2.transformation.try_into()?;
         Ok(crate::feature::DerivedFeatureImpl {
             base: FeatureBase {
                 id: self.0,
-                name: self.1.name.clone(),
-                feature_type: self.1.type_.into(),
+                version: self.1,
+                name: self.2.name.clone(),
+                feature_type: self.2.type_.into(),
                 key,
-                feature_alias: self.1.name,
-                registry_tags: self.1.tags,
+                feature_alias: self.2.name,
+                registry_tags: self.2.tags,
             },
             key_alias,
             transform: t.into(),

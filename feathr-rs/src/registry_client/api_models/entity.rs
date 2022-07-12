@@ -30,15 +30,12 @@ pub struct Entity {
     pub guid: Uuid,
     pub name: String,
     pub qualified_name: String,
-    #[serde(rename = "lastModifiedTS")]
-    pub last_modified_ts: String,
-    // #[serde(rename = "typeName")]
-    // pub entity_type: EntityType,
     pub status: String,
     pub display_text: String,
     pub labels: Vec<String>,
     #[serde(flatten)]
     pub attributes: EntityAttributes,
+    pub version: u64,
 }
 
 impl Entity {
@@ -55,10 +52,15 @@ impl Entity {
     pub fn get_typed_key(&self) -> Result<Vec<crate::TypedKey>, Error> {
         if let Ok(r) = TryInto::<crate::feature::AnchorFeatureImpl>::try_into(self.to_owned()) {
             Ok(r.base.key)
-        } else if let Ok(r) = TryInto::<crate::feature::DerivedFeatureImpl>::try_into(self.to_owned()) {
+        } else if let Ok(r) =
+            TryInto::<crate::feature::DerivedFeatureImpl>::try_into(self.to_owned())
+        {
             Ok(r.base.key)
         } else {
-            Err(Error::InvalidEntityType(self.name.to_owned(), self.get_entity_type().clone()))
+            Err(Error::InvalidEntityType(
+                self.name.to_owned(),
+                self.get_entity_type().clone(),
+            ))
         }
     }
 }
@@ -69,8 +71,11 @@ impl TryInto<crate::project::FeathrProjectImpl> for Entity {
     fn try_into(self) -> Result<crate::project::FeathrProjectImpl, Self::Error> {
         // NOTE: returned project doesn't have owner, need to be set later
         match self.attributes {
-            EntityAttributes::Project(attr) => (self.guid, attr).try_into(),
-            _ => Err(Self::Error::InvalidEntityType(self.guid.to_string(), self.get_entity_type()))
+            EntityAttributes::Project(attr) => (self.guid, self.version, attr).try_into(),
+            _ => Err(Self::Error::InvalidEntityType(
+                self.guid.to_string(),
+                self.get_entity_type(),
+            )),
         }
     }
 }
@@ -80,8 +85,11 @@ impl TryInto<crate::source::SourceImpl> for Entity {
 
     fn try_into(self) -> Result<crate::source::SourceImpl, Self::Error> {
         match self.attributes {
-            EntityAttributes::Source(attr) => (self.guid, attr).try_into(),
-            _ => Err(Self::Error::InvalidEntityType(self.guid.to_string(), self.get_entity_type()))
+            EntityAttributes::Source(attr) => (self.guid, self.version, attr).try_into(),
+            _ => Err(Self::Error::InvalidEntityType(
+                self.guid.to_string(),
+                self.get_entity_type(),
+            )),
         }
     }
 }
@@ -91,8 +99,11 @@ impl TryInto<crate::project::AnchorGroupImpl> for Entity {
 
     fn try_into(self) -> Result<crate::project::AnchorGroupImpl, Self::Error> {
         match self.attributes {
-            EntityAttributes::Anchor(attr) => (self.guid, attr).try_into(),
-            _ => Err(Self::Error::InvalidEntityType(self.guid.to_string(), self.get_entity_type()))
+            EntityAttributes::Anchor(attr) => (self.guid, self.version, attr).try_into(),
+            _ => Err(Self::Error::InvalidEntityType(
+                self.guid.to_string(),
+                self.get_entity_type(),
+            )),
         }
     }
 }
@@ -102,8 +113,11 @@ impl TryInto<crate::feature::AnchorFeatureImpl> for Entity {
 
     fn try_into(self) -> Result<crate::feature::AnchorFeatureImpl, Self::Error> {
         match self.attributes {
-            EntityAttributes::AnchorFeature(attr) => (self.guid, attr).try_into(),
-            _ => Err(Self::Error::InvalidEntityType(self.guid.to_string(), self.get_entity_type()))
+            EntityAttributes::AnchorFeature(attr) => (self.guid, self.version, attr).try_into(),
+            _ => Err(Self::Error::InvalidEntityType(
+                self.guid.to_string(),
+                self.get_entity_type(),
+            )),
         }
     }
 }
@@ -113,8 +127,11 @@ impl TryInto<crate::feature::DerivedFeatureImpl> for Entity {
 
     fn try_into(self) -> Result<crate::feature::DerivedFeatureImpl, Self::Error> {
         match self.attributes {
-            EntityAttributes::DerivedFeature(attr) => (self.guid, attr).try_into(),
-            _ => Err(Self::Error::InvalidEntityType(self.guid.to_string(), self.get_entity_type()))
+            EntityAttributes::DerivedFeature(attr) => (self.guid, self.version, attr).try_into(),
+            _ => Err(Self::Error::InvalidEntityType(
+                self.guid.to_string(),
+                self.get_entity_type(),
+            )),
         }
     }
 }
@@ -124,12 +141,20 @@ pub struct Entities {
     pub entities: Vec<Entity>,
 }
 
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UniqueAttributes {
+    qualified_name: String,
+    version: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EntityRef {
     guid: Uuid,
     type_name: String,
-    unique_attributes: HashMap<String, String>,
+    unique_attributes: UniqueAttributes,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -139,4 +164,3 @@ pub struct EntityLineage {
     pub guid_entity_map: HashMap<Uuid, Entity>,
     pub relations: Vec<Relationship>,
 }
-

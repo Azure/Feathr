@@ -36,6 +36,7 @@ impl FeathrProject {
         // TODO:
         let inner = Arc::new(RwLock::new(FeathrProjectImpl {
             id: Uuid::new_v4(),
+            version: 1,
             owner: None,
             name: name.to_string(),
             anchor_groups: Default::default(),
@@ -55,10 +56,11 @@ impl FeathrProject {
     /**
      * Create a new Feathr project with name
      */
-    pub async fn new(owner: Arc<FeathrClientImpl>, name: &str, id: Uuid) -> Self {
+    pub async fn new(owner: Arc<FeathrClientImpl>, name: &str, id: Uuid, version: u64) -> Self {
         // TODO:
         let inner = Arc::new(RwLock::new(FeathrProjectImpl {
             id,
+            version,
             owner: Some(owner),
             name: name.to_string(),
             anchor_groups: Default::default(),
@@ -79,6 +81,10 @@ impl FeathrProject {
         self.inner.read().await.id
     }
 
+    pub async fn get_version(&self) -> u64 {
+        self.inner.read().await.version
+    }
+
     pub async fn get_name(&self) -> String {
         self.inner.read().await.name.to_owned()
     }
@@ -88,19 +94,43 @@ impl FeathrProject {
     }
 
     pub async fn get_sources(&self) -> Vec<String> {
-        self.inner.read().await.sources.keys().map(ToOwned::to_owned).collect()
+        self.inner
+            .read()
+            .await
+            .sources
+            .keys()
+            .map(ToOwned::to_owned)
+            .collect()
     }
 
     pub async fn get_anchor_groups(&self) -> Vec<String> {
-        self.inner.read().await.anchor_groups.keys().map(ToOwned::to_owned).collect()
+        self.inner
+            .read()
+            .await
+            .anchor_groups
+            .keys()
+            .map(ToOwned::to_owned)
+            .collect()
     }
 
     pub async fn get_anchor_features(&self) -> Vec<String> {
-        self.inner.read().await.anchor_features.keys().map(ToOwned::to_owned).collect()
+        self.inner
+            .read()
+            .await
+            .anchor_features
+            .keys()
+            .map(ToOwned::to_owned)
+            .collect()
     }
 
     pub async fn get_derived_features(&self) -> Vec<String> {
-        self.inner.read().await.derivations.keys().map(ToOwned::to_owned).collect()
+        self.inner
+            .read()
+            .await
+            .derivations
+            .keys()
+            .map(ToOwned::to_owned)
+            .collect()
     }
 
     /**
@@ -141,9 +171,7 @@ impl FeathrProject {
             .get(name)
             .ok_or_else(|| Error::SourceGroupNotFound(name.to_string()))?
             .clone();
-        Ok(Source {
-            inner: g,
-        })
+        Ok(Source { inner: g })
     }
 
     /**
@@ -322,6 +350,7 @@ impl FeathrProject {
 pub(crate) struct FeathrProjectImpl {
     pub(crate) owner: Option<Arc<FeathrClientImpl>>,
     pub(crate) id: Uuid,
+    pub(crate) version: u64,
     pub(crate) name: String,
     pub(crate) anchor_groups: HashMap<String, Arc<AnchorGroupImpl>>,
     pub(crate) derivations: HashMap<String, Arc<DerivedFeatureImpl>>,
@@ -407,6 +436,9 @@ impl FeathrProjectImpl {
                     .unwrap_or_default()
             })
             .unwrap_or_default()
+            .into_iter()
+            .filter(|k| k != "NOT_NEEDED")
+            .collect()
     }
 
     fn get_anchor_feature(&self, group: &str, name: &str) -> Result<Arc<AnchorFeatureImpl>, Error> {
@@ -440,7 +472,7 @@ impl FeathrProjectImpl {
             .map(|o| o.get_registry_client())
             .flatten()
         {
-            group.id = c.new_anchor(self.id, group.clone().into()).await?;
+            (group.id, group.version) = c.new_anchor(self.id, group.clone().into()).await?;
         }
 
         let name = group.name.clone();
@@ -471,7 +503,8 @@ impl FeathrProjectImpl {
             .map(|o| o.get_registry_client())
             .flatten()
         {
-            f.base.id =  c.new_anchor_feature(self.id, g.id, f.clone().into())
+            (f.base.id, f.base.version) = c
+                .new_anchor_feature(self.id, g.id, f.clone().into())
                 .await?;
         }
 
@@ -498,7 +531,7 @@ impl FeathrProjectImpl {
             .map(|o| o.get_registry_client())
             .flatten()
         {
-            f.base.id = c.new_derived_feature(self.id, f.clone().into()).await?;
+            (f.base.id, f.base.version) = c.new_derived_feature(self.id, f.clone().into()).await?;
         }
 
         let name = f.base.name.clone();
@@ -514,7 +547,7 @@ impl FeathrProjectImpl {
             .map(|o| o.get_registry_client())
             .flatten()
         {
-            s.id = c.new_source(self.id, s.clone().into()).await?;
+            (s.id, s.version) = c.new_source(self.id, s.clone().into()).await?;
         }
 
         let name = s.name.clone();
@@ -557,6 +590,7 @@ impl FeathrProjectImpl {
 #[derive(Clone, Debug)]
 pub(crate) struct AnchorGroupImpl {
     pub(crate) id: Uuid,
+    pub(crate) version: u64,
     pub(crate) name: String,
     pub(crate) source: Source,
     pub(crate) registry_tags: HashMap<String, String>,
@@ -571,6 +605,10 @@ pub struct AnchorGroup {
 impl AnchorGroup {
     pub fn get_id(&self) -> Uuid {
         self.inner.id
+    }
+
+    pub fn get_version(&self) -> u64 {
+        self.inner.version
     }
 
     pub fn get_name(&self) -> String {
@@ -632,6 +670,7 @@ impl AnchorGroupBuilder {
     pub async fn build(&mut self) -> Result<AnchorGroup, Error> {
         let group = AnchorGroupImpl {
             id: Uuid::new_v4(),
+            version: 1,
             name: self.name.clone(),
             source: self.source.clone(),
             registry_tags: self.registry_tags.clone(),
@@ -788,7 +827,8 @@ impl TryFrom<EntityLineage> for FeathrProjectImpl {
                                         id: r.to,
                                         key: k,
                                         feature: value.guid_entity_map[&r.to].name.to_owned(),
-                                        is_anchor_feature: value.guid_entity_map[&r.to].get_entity_type()
+                                        is_anchor_feature: value.guid_entity_map[&r.to]
+                                            .get_entity_type()
                                             == EntityType::AnchorFeature,
                                     }
                                 })

@@ -357,7 +357,12 @@ impl From<DerivedFeatureImpl> for DerivedFeatureDef {
     }
 }
 
+fn default_version() -> u64 {
+    1
+}
 #[derive(Clone, Debug, Deserialize)]
 pub struct CreationResponse {
     pub guid: Uuid,
+    #[serde(default = "default_version")]
+    pub version: u64,
 }

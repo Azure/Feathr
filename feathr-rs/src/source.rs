@@ -92,6 +92,8 @@ pub(crate) struct SourceImpl {
     #[serde(skip)]
     pub(crate) id: Uuid,
     #[serde(skip)]
+    pub(crate) version: u64,
+    #[serde(skip)]
     pub(crate) name: String,
     pub(crate) location: SourceLocation,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -113,6 +115,7 @@ impl SourceImpl {
     pub(crate) fn INPUT_CONTEXT() -> SourceImpl {
         SourceImpl {
             id: Uuid::new_v4(),
+            version: 1,
             name: "PASSTHROUGH".to_string(),
             location: SourceLocation::InputContext,
             time_window_parameters: None,
@@ -156,6 +159,10 @@ impl Default for Source {
 impl Source {
     pub fn get_id(&self) -> Uuid {
         self.inner.id
+    }
+
+    pub fn get_version(&self) -> u64 {
+        self.inner.version
     }
 
     pub fn get_name(&self) -> String {
@@ -217,6 +224,7 @@ impl HdfsSourceBuilder {
     pub async fn build(&self) -> Result<Source, Error> {
         let imp = SourceImpl {
             id: Uuid::new_v4(),
+            version: 1,
             name: self.name.to_string(),
             location: SourceLocation::Hdfs {
                 path: self.path.clone(),
@@ -308,6 +316,7 @@ impl JdbcSourceBuilder {
     pub async fn build(&self) -> Result<Source, Error> {
         let imp = SourceImpl {
             id: Uuid::new_v4(),
+            version: 1,
             name: self.name.to_string(),
             location: SourceLocation::Jdbc {
                 url: self.url.clone(),
@@ -394,6 +403,7 @@ impl KafkaSourceBuilder {
     pub async fn build(&self) -> Result<Source, Error> {
         let imp = SourceImpl {
             id: Uuid::new_v4(),
+            version: 1,
             name: self.name.to_string(),
             location: SourceLocation::Kafka {
                 brokers: self.brokers.clone(),

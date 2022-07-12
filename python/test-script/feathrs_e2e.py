@@ -6,7 +6,7 @@ logging.basicConfig(format=FORMAT)
 logging.getLogger().setLevel(logging.DEBUG)
 
 c = FeathrClient("test-script/feathr_config.yaml")
-p1 = c.new_project("p1")
+p1 = c.new_project("feathrs_test_p1")
 batch_source = p1.hdfs_source(name="nycTaxiBatchSource",
                               path="wasbs://public@azurefeathrstorage.blob.core.windows.net/sample_data/green_tripdata_2020-04.csv",
                               timestamp_column="lpep_dropoff_datetime",

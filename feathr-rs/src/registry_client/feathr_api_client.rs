@@ -12,13 +12,15 @@ use super::api_models::{self, CreationResponse};
 pub struct FeathrApiClient {
     registry_endpoint: String,
     client: reqwest::Client,
+    version: usize,
 }
 
 impl FeathrApiClient {
-    pub fn new(registry_url: &str) -> Self {
+    pub fn new(registry_url: &str, version: usize) -> Self {
         Self {
             registry_endpoint: registry_url.to_string(),
             client: Default::default(),
+            version,
         }
     }
     /**
@@ -29,9 +31,15 @@ impl FeathrApiClient {
     ) -> Result<Self, crate::Error> {
         Ok(Self {
             registry_endpoint: var_source
-                .get_environment_variable(&["feature_registry", "endpoint"])
+                .get_environment_variable(&["feature_registry", "api_endpoint"])
                 .await?,
             client: Default::default(),
+            version: var_source
+                .get_environment_variable(&["feature_registry", "api_version"])
+                .await
+                .unwrap_or("1".to_string())
+                .parse()
+                .map_err(|e| crate::Error::InvalidConfig(format!("Invalid api_version, {}", e)))?,
         })
     }
 }
@@ -40,13 +48,21 @@ impl FeathrApiClient {
 #[async_trait]
 impl FeatureRegistry for FeathrApiClient {
     async fn load_project(&self, name: &str) -> Result<api_models::EntityLineage, Error> {
-        let url = format!("{}/projects/{}/lineage", self.registry_endpoint, name);
+        let url = match self.version {
+            1 => format!("{}/projects/{}", self.registry_endpoint, name),
+            2 => format!("{}/projects/{}/lineage", self.registry_endpoint, name),
+            _ => Err(crate::Error::InvalidConfig(format!("Unsupported api_version {}", self.version)))?,
+        };
         debug!("URL: {}", url);
         Ok(self.client.get(url).send().await?.json().await?)
     }
-    async fn new_project(&self, definition: api_models::ProjectDef) -> Result<Uuid, Error> {
+
+    async fn new_project(&self, definition: api_models::ProjectDef) -> Result<(Uuid, u64), Error> {
         let url = format!("{}/projects", self.registry_endpoint);
-        debug!("ProjectDef: {}", serde_json::to_string(&definition).unwrap());
+        debug!(
+            "ProjectDef: {}",
+            serde_json::to_string(&definition).unwrap()
+        );
         let r: CreationResponse = self
             .client
             .post(url)
@@ -57,15 +73,18 @@ impl FeatureRegistry for FeathrApiClient {
             .json()
             .await?;
         debug!("Entity created, id: {}", r.guid);
-        Ok(r.guid)
+        Ok((r.guid, r.version))
     }
 
     async fn new_source(
         &self,
         project_id: Uuid,
         definition: api_models::SourceDef,
-    ) -> Result<Uuid, Error> {
-        let url = format!("{}/projects/{}/datasources", self.registry_endpoint, project_id);
+    ) -> Result<(Uuid, u64), Error> {
+        let url = format!(
+            "{}/projects/{}/datasources",
+            self.registry_endpoint, project_id
+        );
         debug!("SourceDef: {}", serde_json::to_string(&definition).unwrap());
         let r: CreationResponse = self
             .client
@@ -77,14 +96,14 @@ impl FeatureRegistry for FeathrApiClient {
             .json()
             .await?;
         debug!("Entity created, id: {}", r.guid);
-        Ok(r.guid)
+        Ok((r.guid, r.version))
     }
 
     async fn new_anchor(
         &self,
         project_id: Uuid,
         definition: api_models::AnchorDef,
-    ) -> Result<Uuid, Error> {
+    ) -> Result<(Uuid, u64), Error> {
         let url = format!("{}/projects/{}/anchors", self.registry_endpoint, project_id);
         debug!("AnchorDef: {}", serde_json::to_string(&definition).unwrap());
         let r: CreationResponse = self
@@ -97,7 +116,7 @@ impl FeatureRegistry for FeathrApiClient {
             .json()
             .await?;
         debug!("Entity created, id: {}", r.guid);
-        Ok(r.guid)
+        Ok((r.guid, r.version))
     }
 
     async fn new_anchor_feature(
@@ -105,9 +124,15 @@ impl FeatureRegistry for FeathrApiClient {
         project_id: Uuid,
         anchor_id: Uuid,
         definition: api_models::AnchorFeatureDef,
-    ) -> Result<Uuid, Error> {
-        let url = format!("{}/projects/{}/anchors/{}/features", self.registry_endpoint, project_id, anchor_id);
-        debug!("AnchorFeatureDef: {}", serde_json::to_string(&definition).unwrap());
+    ) -> Result<(Uuid, u64), Error> {
+        let url = format!(
+            "{}/projects/{}/anchors/{}/features",
+            self.registry_endpoint, project_id, anchor_id
+        );
+        debug!(
+            "AnchorFeatureDef: {}",
+            serde_json::to_string(&definition).unwrap()
+        );
         let r: CreationResponse = self
             .client
             .post(url)
@@ -118,16 +143,22 @@ impl FeatureRegistry for FeathrApiClient {
             .json()
             .await?;
         debug!("Entity created, id: {}", r.guid);
-        Ok(r.guid)
+        Ok((r.guid, r.version))
     }
 
     async fn new_derived_feature(
         &self,
         project_id: Uuid,
         definition: api_models::DerivedFeatureDef,
-    ) -> Result<Uuid, Error> {
-        let url = format!("{}/projects/{}/derivedfeatures", self.registry_endpoint, project_id);
-        debug!("DerivedFeatureDef: {}", serde_json::to_string(&definition).unwrap());
+    ) -> Result<(Uuid, u64), Error> {
+        let url = format!(
+            "{}/projects/{}/derivedfeatures",
+            self.registry_endpoint, project_id
+        );
+        debug!(
+            "DerivedFeatureDef: {}",
+            serde_json::to_string(&definition).unwrap()
+        );
         let r: CreationResponse = self
             .client
             .post(url)
@@ -138,6 +169,6 @@ impl FeatureRegistry for FeathrApiClient {
             .json()
             .await?;
         debug!("Entity created, id: {}", r.guid);
-        Ok(r.guid)
+        Ok((r.guid, r.version))
     }
 }

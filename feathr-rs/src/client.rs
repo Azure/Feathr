@@ -51,7 +51,7 @@ impl FeathrClient {
     }
 
     pub async fn new_project_with_tags(&self, name: &str, tags: HashMap<String, String>) -> Result<FeathrProject, Error> {
-        let id = if let Some(r) = self.inner.get_registry_client() {
+        let (id, version) = if let Some(r) = self.inner.get_registry_client() {
             let def = api_models::ProjectDef {
                 name: name.to_string(),
                 tags,
@@ -59,9 +59,9 @@ impl FeathrClient {
             r.new_project(def).await?
         } else {
             warn!("The project {} is created in detached mode, all changes will not be able to be stored to the registry", name);
-            Uuid::new_v4()
+            (Uuid::new_v4(), 1)
         };
-        Ok(FeathrProject::new(self.inner.clone(), name, id).await)
+        Ok(FeathrProject::new(self.inner.clone(), name, id, version).await)
     }
 
     pub async fn submit_job(&self, request: SubmitJobRequest) -> Result<JobId, Error> {

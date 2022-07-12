@@ -69,6 +69,7 @@ impl AnchorFeatureBuilder {
         let anchor = AnchorFeatureImpl {
             base: FeatureBase {
                 id: Uuid::new_v4(),
+                version: 1,
                 name: self.name.clone(),
                 feature_type: self.feature_type.to_owned(),
                 key: if self.keys.is_empty() {
@@ -187,6 +188,7 @@ impl DerivedFeatureBuilder {
         let derived = DerivedFeatureImpl {
             base: FeatureBase {
                 id: Uuid::new_v4(),
+                version: 1,
                 name: self.name.clone(),
                 feature_type: self.feature_type.to_owned(),
                 key: if self.keys.is_empty() {

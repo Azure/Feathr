@@ -6,6 +6,7 @@ use std::{
 };
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
+use feathr::Feature;
 use futures::future::join_all;
 use futures::{pin_mut, Future};
 use pyo3::exceptions::{PyKeyError, PyRuntimeError, PyValueError};
@@ -547,6 +548,11 @@ impl Source {
     }
 
     #[getter]
+    fn get_version(&self) -> u64 {
+        self.0.get_version()
+    }
+
+    #[getter]
     fn get_name(&self) -> String {
         self.0.get_name()
     }
@@ -562,7 +568,11 @@ impl Source {
     }
 
     fn __repr__(&self) -> String {
-        format!("Source(id='{}', name='{}')", self.get_id(), self.get_name())
+        format!("Source(id='{}', name='{}', version={})",
+        self.get_id(),
+        self.get_name(),
+        self.get_version()
+    )
     }
 
     fn __richcmp__(&self, other: &Self, op: CompareOp) -> PyResult<bool> {
@@ -795,6 +805,10 @@ impl AnchorFeature {
         feathr::Feature::get_id(&self.0).to_string()
     }
     #[getter]
+    fn get_version(&self) -> u64 {
+        self.0.get_version()
+    }
+    #[getter]
     fn get_name(&self) -> String {
         feathr::Feature::get_name(&self.0)
     }
@@ -832,7 +846,7 @@ impl AnchorFeature {
                     .0
                     .with_key(group, &key_alias)
                     .await
-                    .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+                    .map_err(|e| PyValueError::new_err(format!("{}", e)))?
                     .into())
             })
     }
@@ -854,9 +868,10 @@ impl AnchorFeature {
 
     fn __repr__(&self) -> String {
         format!(
-            "AnchorFeature(id='{}', name='{}')",
+            "AnchorFeature(id='{}', name='{}', version={})",
             self.get_id(),
-            self.get_name()
+            self.get_name(),
+            self.get_version()
         )
     }
 }
@@ -882,6 +897,10 @@ impl DerivedFeature {
     #[getter]
     fn get_id(&self) -> String {
         feathr::Feature::get_id(&self.0).to_string()
+    }
+    #[getter]
+    fn get_version(&self) -> u64 {
+        self.0.get_version()
     }
     #[getter]
     fn get_name(&self) -> String {
@@ -942,9 +961,10 @@ impl DerivedFeature {
     }
     fn __repr__(&self) -> String {
         format!(
-            "DerivedFeature(id='{}', name='{}')",
+            "DerivedFeature(id='{}', name='{}', version={})",
             self.get_id(),
-            self.get_name()
+            self.get_name(),
+            self.get_version()
         )
     }
 }
@@ -970,6 +990,10 @@ impl AnchorGroup {
     #[getter]
     fn get_id(&self) -> String {
         feathr::AnchorGroup::get_id(&self.0).to_string()
+    }
+    #[getter]
+    fn get_version(&self) -> u64 {
+        self.0.get_version()
     }
     #[getter]
     fn get_name(&self) -> String {
@@ -1045,9 +1069,10 @@ impl AnchorGroup {
     }
     fn __repr__(&self) -> String {
         format!(
-            "AnchorGroup(id='{}', name='{}')",
+            "AnchorGroup(id='{}', name='{}', version={})",
             self.get_id(),
-            self.get_name()
+            self.get_name(),
+            self.get_version()
         )
     }
 }
@@ -1076,6 +1101,14 @@ impl FeathrProject {
             .build()
             .unwrap()
             .block_on(async { self.0.get_id().await.to_string() })
+    }
+    #[getter]
+    pub fn get_version(&self) -> u64 {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async { self.0.get_version().await })
     }
     #[getter]
     pub fn get_name(&self) -> String {
@@ -1582,9 +1615,10 @@ impl FeathrProject {
 
     fn __repr__(&self) -> String {
         format!(
-            "FeathrProject(id='{}', name='{}')",
+            "FeathrProject(id='{}', name='{}', version={})",
             self.get_id(),
-            self.get_name()
+            self.get_name(),
+            self.get_version()
         )
     }
 }
