@@ -194,6 +194,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 let version = option_env!("CARGO_PKG_VERSION").unwrap_or("<unknown>");
                 Result::<_, Infallible>::Ok(Json(serde_json::json!({
                     "version": version,
+                    "rbac": false,
+                    "backends": ["memory", "mssql", "mysql", "postgres"],
+                    "api_versions": ["v1", "v2"],
                 })))
             }),
         )
