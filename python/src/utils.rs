@@ -1,8 +1,44 @@
 use chrono::Duration;
-use pyo3::{exceptions::PyValueError, PyResult};
+use futures::{Future, pin_mut};
+use pyo3::{exceptions::PyValueError, PyResult, Python};
 use regex::Regex;
 
+/**
+ * Check CTRL-C every second, cancel the future if pressed and return Interrupted error
+ */
+pub(crate) async fn cancelable_wait<'p, F, T>(py: Python<'p>, f: F) -> PyResult<T>
+where
+    F: Future<Output = PyResult<T>>,
+{
+    // Future needs to be pinned then its mutable ref can be awaited multiple times.
+    pin_mut!(f);
+    loop {
+        match tokio::time::timeout(std::time::Duration::from_secs(1), &mut f).await {
+            Ok(v) => {
+                return v;
+            }
+            Err(_) => {
+                // Timeout, check if CTRL-C is pressed
+                py.check_signals()?
+            }
+        }
+    }
+}
 
+/**
+ * Run async function in blocking fashion
+ */
+pub(crate) fn block_on<F: Future>(future: F) -> F::Output {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(future)
+}
+
+/**
+ * Parse string into duration
+ */
 pub(crate) fn str_to_dur(s: &str) -> PyResult<Duration> {
     let re = Regex::new(r"^([0-9]+)([a-z]*)$").unwrap();
     if let Some(caps) = re.captures(s.trim()) {

@@ -12,5 +12,9 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 
+[project.urls]
+"Source Code" = "https://github.com/Azure/Feathr"
+Issues = "https://github.com/Azure/Feathr/issues"
+
 [tool.feathr]
 target_version = ['py37', 'py38', 'py39', 'py310']

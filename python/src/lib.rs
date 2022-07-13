@@ -8,42 +8,12 @@ use std::{
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use feathr::Feature;
 use futures::future::join_all;
-use futures::{pin_mut, Future};
 use pyo3::exceptions::{PyKeyError, PyRuntimeError, PyValueError};
 use pyo3::types::{PyDateAccess, PyDateTime, PyList, PyTimeAccess};
 use pyo3::{exceptions::PyTypeError, prelude::*, pyclass::CompareOp};
+use utils::{block_on, cancelable_wait};
 
 mod utils;
-
-/**
- * Check CTRL-C every second, cancel the future if pressed and return Interrupted error
- */
-async fn cancelable_wait<'p, F, T>(py: Python<'p>, f: F) -> PyResult<T>
-where
-    F: Future<Output = PyResult<T>>,
-{
-    // Future needs to be pinned then its mutable ref can be awaited multiple times.
-    pin_mut!(f);
-    loop {
-        match tokio::time::timeout(std::time::Duration::from_secs(1), &mut f).await {
-            Ok(v) => {
-                return v;
-            }
-            Err(_) => {
-                // Timeout, check if CTRL-C is pressed
-                py.check_signals()?
-            }
-        }
-    }
-}
-
-fn block_on<F: Future>(future: F) -> F::Output {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(future)
-}
 
 #[pyclass]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -1726,6 +1696,11 @@ fn load(config_file: String) -> PyResult<FeathrClient> {
     FeathrClient::load(config_file)
 }
 
+#[pyfunction]
+fn loads(content: &str) -> PyResult<FeathrClient> {
+    FeathrClient::loads(content)
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn feathrs(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -1750,5 +1725,6 @@ fn feathrs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<FeathrProject>()?;
     m.add_class::<FeathrClient>()?;
     m.add_function(wrap_pyfunction!(load, m)?)?;
+    m.add_function(wrap_pyfunction!(loads, m)?)?;
     Ok(())
 }

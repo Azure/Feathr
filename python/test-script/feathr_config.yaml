@@ -109,16 +109,17 @@ online_store:
 
 feature_registry:
   # For testing, `auth` is set to `true` by default
-  # api_endpoint: 'http://localhost:8000/api/v1'
-  # auth: "false"
+  api_endpoint: 'http://localhost:8000/api/v2'
+  api_version: "2"
+  auth: "false"
 
   # Official Feathr registry supports API version 1
   # api_endpoint: 'https://feathr-sql-registry.azurewebsites.net/api/v1'
-  # auth: false
-  api_endpoint: 'https://feathr-rbac-registry.azurewebsites.net/api/v1'
-  auth: "true"
+  # auth: "false"
+  # api_endpoint: 'https://feathr-rbac-registry.azurewebsites.net/api/v1'
+  # auth: "true"
 
   # Registry in this repo supports API version 2
   # api_endpoint: 'https://feathrregistry.azurewebsites.net/api/v2'
-  # auth: false
-  # api_version: 2
+  # auth: "false"
+  # api_version: "2"
