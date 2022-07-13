@@ -37,6 +37,14 @@ where
     }
 }
 
+fn block_on<F: Future>(future: F) -> F::Output {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(future)
+}
+
 #[pyclass]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum ValueType {
@@ -568,11 +576,12 @@ impl Source {
     }
 
     fn __repr__(&self) -> String {
-        format!("Source(id='{}', name='{}', version={})",
-        self.get_id(),
-        self.get_name(),
-        self.get_version()
-    )
+        format!(
+            "Source(id='{}', name='{}', version={})",
+            self.get_id(),
+            self.get_name(),
+            self.get_version()
+        )
     }
 
     fn __richcmp__(&self, other: &Self, op: CompareOp) -> PyResult<bool> {
@@ -837,33 +846,25 @@ impl AnchorFeature {
     }
 
     fn with_key(&self, group: &str, key_alias: Vec<&str>) -> PyResult<Self> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                Ok(self
-                    .0
-                    .with_key(group, &key_alias)
-                    .await
-                    .map_err(|e| PyValueError::new_err(format!("{}", e)))?
-                    .into())
-            })
+        block_on(async {
+            Ok(self
+                .0
+                .with_key(group, &key_alias)
+                .await
+                .map_err(|e| PyValueError::new_err(format!("{}", e)))?
+                .into())
+        })
     }
 
     fn as_feature(&self, group: &str, feature_alias: &str) -> PyResult<Self> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                Ok(self
-                    .0
-                    .as_feature(group, feature_alias)
-                    .await
-                    .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
-                    .into())
-            })
+        block_on(async {
+            Ok(self
+                .0
+                .as_feature(group, feature_alias)
+                .await
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+                .into())
+        })
     }
 
     fn __repr__(&self) -> String {
@@ -946,18 +947,14 @@ impl DerivedFeature {
     }
 
     fn as_feature(&self, feature_alias: &str) -> PyResult<Self> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                Ok(self
-                    .0
-                    .as_feature(feature_alias)
-                    .await
-                    .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
-                    .into())
-            })
+        block_on(async {
+            Ok(self
+                .0
+                .as_feature(feature_alias)
+                .await
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+                .into())
+        })
     }
     fn __repr__(&self) -> String {
         format!(
@@ -1001,11 +998,7 @@ impl AnchorGroup {
     }
     #[getter]
     fn get_anchor_features(&self) -> Vec<String> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async { self.0.get_anchor_features().await })
+        block_on(async { self.0.get_anchor_features().await })
     }
 
     #[args(keys = "None", registry_tags = "None")]
@@ -1040,32 +1033,24 @@ impl AnchorGroup {
                 builder.add_tag(&key, &value);
             }
         }
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                Ok(builder
-                    .build()
-                    .await
-                    .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
-                    .into())
-            })
+        block_on(async {
+            Ok(builder
+                .build()
+                .await
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+                .into())
+        })
     }
 
     fn __getitem__(&self, key: &str) -> PyResult<AnchorFeature> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                Ok(self
-                    .0
-                    .get_anchor(key)
-                    .await
-                    .map_err(|_| PyKeyError::new_err(key.to_string()))?
-                    .into())
-            })
+        block_on(async {
+            Ok(self
+                .0
+                .get_anchor(key)
+                .await
+                .map_err(|_| PyKeyError::new_err(key.to_string()))?
+                .into())
+        })
     }
     fn __repr__(&self) -> String {
         format!(
@@ -1096,101 +1081,61 @@ struct FeathrProject(feathr::FeathrProject, FeathrClient);
 impl FeathrProject {
     #[getter]
     pub fn get_id(&self) -> String {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async { self.0.get_id().await.to_string() })
+        block_on(async { self.0.get_id().await.to_string() })
     }
     #[getter]
     pub fn get_version(&self) -> u64 {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async { self.0.get_version().await })
+        block_on(async { self.0.get_version().await })
     }
     #[getter]
     pub fn get_name(&self) -> String {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async { self.0.get_name().await.to_string() })
+        block_on(async { self.0.get_name().await.to_string() })
     }
     #[getter]
     pub fn get_input_context(&self) -> Source {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async { self.0.INPUT_CONTEXT().await.into() })
+        block_on(async { self.0.INPUT_CONTEXT().await.into() })
     }
 
     #[getter]
     pub fn get_sources(&self) -> PyResult<Vec<String>> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async { Ok(self.0.get_sources().await) })
+        block_on(async { Ok(self.0.get_sources().await) })
     }
 
     #[getter]
     pub fn get_anchor_groups(&self) -> PyResult<Vec<String>> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async { Ok(self.0.get_anchor_groups().await) })
+        block_on(async { Ok(self.0.get_anchor_groups().await) })
     }
 
     #[getter]
     pub fn get_anchor_features(&self) -> PyResult<Vec<String>> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async { Ok(self.0.get_anchor_features().await) })
+        block_on(async { Ok(self.0.get_anchor_features().await) })
     }
 
     #[getter]
     pub fn get_derived_features(&self) -> PyResult<Vec<String>> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async { Ok(self.0.get_derived_features().await) })
+        block_on(async { Ok(self.0.get_derived_features().await) })
     }
 
     pub fn get_anchor_group(&self, name: &str) -> PyResult<AnchorGroup> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                Ok(self
-                    .0
-                    .get_anchor_group(name)
-                    .await
-                    .map_err(|_| PyKeyError::new_err(name.to_string()))?
-                    .into())
-            })
+        block_on(async {
+            Ok(self
+                .0
+                .get_anchor_group(name)
+                .await
+                .map_err(|_| PyKeyError::new_err(name.to_string()))?
+                .into())
+        })
     }
 
     pub fn get_derived_feature(&self, name: &str) -> PyResult<DerivedFeature> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                Ok(self
-                    .0
-                    .get_derived_feature(name)
-                    .await
-                    .map_err(|_| PyKeyError::new_err(name.to_string()))?
-                    .into())
-            })
+        block_on(async {
+            Ok(self
+                .0
+                .get_derived_feature(name)
+                .await
+                .map_err(|_| PyKeyError::new_err(name.to_string()))?
+                .into())
+        })
     }
 
     #[args(registry_tags = "None")]
@@ -1206,17 +1151,13 @@ impl FeathrProject {
                 builder.add_registry_tag(&key, &value);
             }
         }
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                Ok(builder
-                    .build()
-                    .await
-                    .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
-                    .into())
-            })
+        block_on(async {
+            Ok(builder
+                .build()
+                .await
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+                .into())
+        })
     }
 
     #[args(keys = "None", registry_tags = "None")]
@@ -1262,17 +1203,13 @@ impl FeathrProject {
                 builder.add_tag(&key, &value);
             }
         }
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                Ok(builder
-                    .build()
-                    .await
-                    .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
-                    .into())
-            })
+        block_on(async {
+            Ok(builder
+                .build()
+                .await
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+                .into())
+        })
     }
 
     #[args(
@@ -1303,17 +1240,13 @@ impl FeathrProject {
             builder.preprocessing(&preprocessing);
         }
 
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                Ok(builder
-                    .build()
-                    .await
-                    .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
-                    .into())
-            })
+        block_on(async {
+            Ok(builder
+                .build()
+                .await
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+                .into())
+        })
     }
 
     #[args(
@@ -1367,17 +1300,13 @@ impl FeathrProject {
             builder.preprocessing(&preprocessing);
         }
 
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                Ok(builder
-                    .build()
-                    .await
-                    .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
-                    .into())
-            })
+        block_on(async {
+            Ok(builder
+                .build()
+                .await
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+                .into())
+        })
     }
 
     // pub fn kafka_source(&self, name: &str, brokers: &PyList, topics: &PyList, avro_json: &PyAny) {}
@@ -1405,25 +1334,21 @@ impl FeathrProject {
         }
         let queries: Vec<&feathr::FeatureQuery> = queries.iter().map(|q| q).collect();
 
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let request = self
-                    .0
-                    .feature_join_job(observation, &queries, output)
-                    .await
-                    .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?
-                    .output_path(output)
-                    .build();
-                let client = self.1 .0.clone();
-                Ok(client
-                    .submit_job(request)
-                    .await
-                    .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?
-                    .0)
-            })
+        block_on(async {
+            let request = self
+                .0
+                .feature_join_job(observation, &queries, output)
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?
+                .output_path(output)
+                .build();
+            let client = self.1 .0.clone();
+            Ok(client
+                .submit_job(request)
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?
+                .0)
+        })
     }
 
     fn get_offline_features_async<'p>(
@@ -1509,33 +1434,29 @@ impl FeathrProject {
             );
         let sink = sink.map(|s| feathr::OutputSink::Redis(s.0));
 
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let mut builder = self
-                    .0
-                    .feature_gen_job(&feature_names, start, end, step.into())
-                    .await
-                    .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
-                if let Some(sink) = sink {
-                    builder.sink(sink);
-                }
+        block_on(async {
+            let mut builder = self
+                .0
+                .feature_gen_job(&feature_names, start, end, step.into())
+                .await
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
+            if let Some(sink) = sink {
+                builder.sink(sink);
+            }
 
-                let request = builder
-                    .build()
-                    .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
-                let client = self.1 .0.clone();
-                let jobs_ids: Vec<u64> = client
-                    .submit_jobs(request)
-                    .await
-                    .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?
-                    .into_iter()
-                    .map(|job_id| job_id.0)
-                    .collect();
-                Ok(jobs_ids)
-            })
+            let request = builder
+                .build()
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
+            let client = self.1 .0.clone();
+            let jobs_ids: Vec<u64> = client
+                .submit_jobs(request)
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?
+                .into_iter()
+                .map(|job_id| job_id.0)
+                .collect();
+            Ok(jobs_ids)
+        })
     }
 
     #[args(step = "DateTimeResolution::Daily", sink = "None")]
@@ -1606,11 +1527,7 @@ impl FeathrProject {
     #[allow(non_snake_case)]
     #[getter]
     pub fn INPUT_CONTEXT(&self) -> Source {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async { self.0.INPUT_CONTEXT().await.into() })
+        block_on(async { self.0.INPUT_CONTEXT().await.into() })
     }
 
     fn __repr__(&self) -> String {
@@ -1637,16 +1554,12 @@ struct FeathrClient(feathr::FeathrClient);
 impl FeathrClient {
     #[new]
     fn load(config_file: String) -> PyResult<Self> {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                feathr::FeathrClient::load(config_file)
-                    .await
-                    .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))
-                    .map(|c| FeathrClient(c))
-            })
+        block_on(async {
+            feathr::FeathrClient::load(config_file)
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))
+                .map(|c| FeathrClient(c))
+        })
     }
 
     #[staticmethod]
@@ -1662,16 +1575,12 @@ impl FeathrClient {
     #[staticmethod]
     fn loads(content: &str) -> PyResult<Self> {
         let content = content.to_string();
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async move {
-                feathr::FeathrClient::from_str(&content)
-                    .await
-                    .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))
-                    .map(|c| FeathrClient(c))
-            })
+        block_on(async move {
+            feathr::FeathrClient::from_str(&content)
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))
+                .map(|c| FeathrClient(c))
+        })
     }
 
     #[staticmethod]
@@ -1686,30 +1595,22 @@ impl FeathrClient {
     }
 
     fn load_project(&self, name: &str) -> PyResult<FeathrProject> {
-        let project = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async move {
-                self.0
-                    .load_project(name)
-                    .await
-                    .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))
-            })?;
+        let project = block_on(async move {
+            self.0
+                .load_project(name)
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))
+        })?;
         Ok(FeathrProject(project, self.clone()))
     }
 
     fn new_project(&self, name: &str) -> PyResult<FeathrProject> {
-        let project = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async move {
-                self.0
-                    .new_project(name)
-                    .await
-                    .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))
-            })?;
+        let project = block_on(async move {
+            self.0
+                .new_project(name)
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))
+        })?;
         Ok(FeathrProject(project, self.clone()))
     }
 
@@ -1722,16 +1623,12 @@ impl FeathrClient {
     ) -> PyResult<String> {
         let client = self.0.clone();
         let timeout = timeout.map(|s| Duration::seconds(s));
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(cancelable_wait(py, async {
-                Ok(client
-                    .wait_for_job(feathr::JobId(job_id), timeout)
-                    .await
-                    .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?)
-            }))
+        block_on(cancelable_wait(py, async {
+            Ok(client
+                .wait_for_job(feathr::JobId(job_id), timeout)
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?)
+        }))
     }
 
     #[args(timeout = "None")]
@@ -1760,21 +1657,17 @@ impl FeathrClient {
     ) -> PyResult<Vec<String>> {
         let client = self.0.clone();
         let timeout = timeout.map(|s| Duration::seconds(s));
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(cancelable_wait(py, async {
-                let jobs = job_id
-                    .into_iter()
-                    .map(|job_id| client.wait_for_job(feathr::JobId(job_id), timeout));
-                let complete: Vec<String> = join_all(jobs)
-                    .await
-                    .into_iter()
-                    .map(|r| r.unwrap_or_default())
-                    .collect();
-                Ok(complete)
-            }))
+        block_on(cancelable_wait(py, async {
+            let jobs = job_id
+                .into_iter()
+                .map(|job_id| client.wait_for_job(feathr::JobId(job_id), timeout));
+            let complete: Vec<String> = join_all(jobs)
+                .await
+                .into_iter()
+                .map(|r| r.unwrap_or_default())
+                .collect();
+            Ok(complete)
+        }))
     }
 
     #[args(timeout = "None")]
@@ -1801,18 +1694,14 @@ impl FeathrClient {
 
     pub fn get_job_status(&self, job_id: u64) -> PyResult<JobStatus> {
         let client = self.0.clone();
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let status: JobStatus = client
-                    .get_job_status(feathr::JobId(job_id))
-                    .await
-                    .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?
-                    .into();
-                Ok(status)
-            })
+        block_on(async {
+            let status: JobStatus = client
+                .get_job_status(feathr::JobId(job_id))
+                .await
+                .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?
+                .into();
+            Ok(status)
+        })
     }
 
     pub fn get_job_status_async<'p>(&'p self, job_id: u64, py: Python<'p>) -> PyResult<&'p PyAny> {

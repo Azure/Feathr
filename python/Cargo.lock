@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "feathr"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "async-trait",
  "azure_core",
@@ -453,7 +453,7 @@ dependencies = [
 
 [[package]]
 name = "feathrs"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "chrono",
  "feathr",
