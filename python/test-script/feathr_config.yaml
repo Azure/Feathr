@@ -84,6 +84,7 @@ spark_config:
     # Feathr Job configuration. Support local paths, path start with http(s)://, and paths start with abfs(s)://
     # this is the default location so end users don't have to compile the runtime again.
     # feathr_runtime_location: wasbs://public@azurefeathrstorage.blob.core.windows.net/feathr-assembly-0.1.0-SNAPSHOT.jar
+    # Comment this setting out to use official JAR from Maven central
     feathr_runtime_location: "wasbs://public@xchfeathrtest4sto.blob.core.windows.net/feathr-assembly-0.4.0.jar"
   databricks:
     # workspace instance
@@ -96,6 +97,7 @@ spark_config:
     work_dir: 'dbfs:/feathr_getting_started'
     # this is the default location so end users don't have to compile the runtime again.
     # feathr_runtime_location: "../../target/scala-2.12/feathr-assembly-0.1.0.jar"
+    # Comment this setting out to use official JAR from Maven central
     feathr_runtime_location: "dbfs:/feathr-assembly-0.4.0.jar"
 
 online_store:
@@ -106,6 +108,12 @@ online_store:
     ssl_enabled: True
 
 feature_registry:
+  # For testing
   api_endpoint: 'http://localhost:8000/api/v1'
+
+  # Official Feathr registry supports API version 1
+  # api_endpoint: 'https://feathr-sql-registry.azurewebsites.net/api/v1'
+
+  # Registry in this repo supports API version 2
   # api_endpoint: 'https://feathrregistry.azurewebsites.net/api/v2'
   # api_version: 2

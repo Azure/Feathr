@@ -24,17 +24,26 @@ pub enum EntityType {
     DerivedFeature,
 }
 
+fn default_version() -> u64 {
+    1
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Entity {
     pub guid: Uuid,
-    pub name: String,
-    pub qualified_name: String,
+    // These 2 fields could be omitted
+    #[serde(rename = "name", default)]
+    _name: String,
+    #[serde(rename = "qualifiedName", default)]
+    _qualified_name: String,
     pub status: String,
     pub display_text: String,
+    #[serde(default)]
     pub labels: Vec<String>,
     #[serde(flatten)]
     pub attributes: EntityAttributes,
+    #[serde(default = "default_version")]
     pub version: u64,
 }
 
@@ -58,10 +67,18 @@ impl Entity {
             Ok(r.base.key)
         } else {
             Err(Error::InvalidEntityType(
-                self.name.to_owned(),
+                self.get_name(),
                 self.get_entity_type().clone(),
             ))
         }
+    }
+
+    pub fn get_name(&self) -> String {
+        self.attributes.get_name()
+    }
+
+    pub fn get_qualified_name(&self) -> String {
+        self.attributes.get_qualified_name()
     }
 }
 
@@ -146,6 +163,7 @@ pub struct Entities {
 #[serde(rename_all = "camelCase")]
 pub struct UniqueAttributes {
     qualified_name: String,
+    #[serde(default = "default_version")]
     version: u64,
 }
 

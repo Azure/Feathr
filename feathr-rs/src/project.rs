@@ -737,23 +737,13 @@ impl TryFrom<EntityLineage> for FeathrProjectImpl {
             .relations
             .iter()
             .filter(|&r| r.edge_type == EdgeType::BelongsTo)
-            .map(|r| {
-                (
-                    r.from.to_owned(),
-                    value.guid_entity_map[&r.to].name.to_owned(),
-                )
-            })
+            .map(|r| (r.from.to_owned(), value.guid_entity_map[&r.to].get_name()))
             .collect();
         let consumes_map: HashMap<Uuid, String> = value
             .relations
             .iter()
             .filter(|&r| r.edge_type == EdgeType::Consumes)
-            .map(|r| {
-                (
-                    r.from.to_owned(),
-                    value.guid_entity_map[&r.to].name.to_owned(),
-                )
-            })
+            .map(|r| (r.from.to_owned(), value.guid_entity_map[&r.to].get_name()))
             .collect();
         let (_, entity) = value
             .guid_entity_map
@@ -826,7 +816,7 @@ impl TryFrom<EntityLineage> for FeathrProjectImpl {
                                     InputFeature {
                                         id: r.to,
                                         key: k,
-                                        feature: value.guid_entity_map[&r.to].name.to_owned(),
+                                        feature: value.guid_entity_map[&r.to].get_name(),
                                         is_anchor_feature: value.guid_entity_map[&r.to]
                                             .get_entity_type()
                                             == EntityType::AnchorFeature,

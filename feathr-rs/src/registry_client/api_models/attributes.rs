@@ -317,3 +317,25 @@ pub enum EntityAttributes {
     #[serde(rename = "feathr_derived_feature_v1")]
     DerivedFeature(DerivedFeatureAttributes),
 }
+
+impl EntityAttributes {
+    pub fn get_name(&self) -> String {
+        match self {
+            EntityAttributes::Project(p) => p.name.clone(),
+            EntityAttributes::Source(s) => s.name.clone(),
+            EntityAttributes::Anchor(a) => a.name.clone(),
+            EntityAttributes::AnchorFeature(a) => a.name.clone(),
+            EntityAttributes::DerivedFeature(d) => d.name.clone(),
+        }
+    }
+
+    pub fn get_qualified_name(&self) -> String {
+        match self {
+            EntityAttributes::Project(p) => p.qualified_name.clone(),
+            EntityAttributes::Source(s) => s.qualified_name.clone(),
+            EntityAttributes::Anchor(a) => a.qualified_name.clone(),
+            EntityAttributes::AnchorFeature(a) => a.qualified_name.clone(),
+            EntityAttributes::DerivedFeature(d) => d.qualified_name.clone(),
+        }
+    }
+}
