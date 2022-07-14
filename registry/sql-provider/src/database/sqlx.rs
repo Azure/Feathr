@@ -1,14 +1,19 @@
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 use async_trait::async_trait;
 use log::debug;
-use sqlx::{pool::PoolConnection, Any, AnyConnection, AnyPool, Connection, Executor};
+use sqlx::{
+    any::AnyKind, pool::PoolConnection, Any, AnyConnection, AnyPool, ConnectOptions, Connection,
+    Executor,
+};
 
-use crate::{db_registry::ExternalStorage, Registry};
+use crate::{database::get_entity_table, db_registry::ExternalStorage, Registry};
 use common_utils::Logged;
 use registry_provider::{Edge, EdgeType, Entity, EntityProperty, RegistryError};
 use tokio::sync::{OnceCell, RwLock};
 use uuid::Uuid;
+
+use super::get_edge_table;
 
 #[derive(sqlx::FromRow)]
 struct EntityPropertyWrapper {
@@ -16,7 +21,7 @@ struct EntityPropertyWrapper {
 }
 
 async fn load_entities() -> Result<Vec<EntityProperty>, anyhow::Error> {
-    let entities_table = std::env::var("ENTITY_TABLE").unwrap_or_else(|_| "entities".to_string());
+    let entities_table = get_entity_table();
     debug!("Loading entities from {}", entities_table);
     let pool = POOL
         .get_or_init(|| async { init_pool().await.ok() })
@@ -118,6 +123,44 @@ async fn load_edges() -> Result<Vec<Edge>, anyhow::Error> {
 }
 
 pub async fn load_content() -> Result<(Vec<Entity<EntityProperty>>, Vec<Edge>), anyhow::Error> {
+    let conn_str = std::env::var("CONNECTION_STR")?;
+    if conn_str
+        .parse::<<AnyConnection as Connection>::Options>()?
+        .kind()
+        == AnyKind::Sqlite
+    {
+        // HACK:
+        // Ensure the database file is created.
+        // For unknown reason AnyConnection doesn't create the database file
+        let mut conn = sqlx::sqlite::SqliteConnectOptions::from_str(&conn_str)?
+            .create_if_missing(true)
+            .connect()
+            .await?;
+
+        debug!("Using SQLite database, creating schema...");
+        debug!(
+            "Creating entities table '{}' if not exists",
+            get_entity_table()
+        );
+        let sql = &format!(
+            r#"CREATE TABLE IF NOT EXISTS {}
+            (entity_id varchar(50), entity_content text, PRIMARY KEY (entity_id))
+            "#,
+            get_entity_table()
+        );
+        conn.execute(sqlx::query(&sql)).await?;
+
+        debug!("Creating edges table '{}' if not exists", get_edge_table());
+        let sql = &format!(
+            r#"CREATE TABLE IF NOT EXISTS {}
+            (from_id varchar(50), to_id varchar(50), edge_type varchar(50), PRIMARY KEY (from_id, to_id, edge_type))"#,
+            get_edge_table()
+        );
+        conn.execute(sqlx::query(&sql)).await?;
+
+        conn.close().await?;
+    }
+
     debug!("Loading registry data from database");
     let edges = load_edges().await?;
     let entities = load_entities().await?;
@@ -188,10 +231,7 @@ impl SqlxStorage {
 
 impl Default for SqlxStorage {
     fn default() -> Self {
-        Self::new(
-            &std::env::var("ENTITY_TABLE").unwrap_or_else(|_| "entities".to_string()),
-            &std::env::var("EDGE_TABLE").unwrap_or_else(|_| "edges".to_string()),
-        )
+        Self::new(&get_entity_table(), &get_edge_table())
     }
 }
 
@@ -209,7 +249,8 @@ impl ExternalStorage<EntityProperty> for SqlxStorage {
         let mut conn = connect()
             .await
             .map_err(|e| RegistryError::ExternalStorageError(format!("{:?}", e)))?;
-        match conn.kind() {
+        let kind = conn.kind();
+        match kind {
             sqlx::any::AnyKind::Postgres => {
                 let sql = &format!(
                     r#"INSERT INTO {}
@@ -229,6 +270,21 @@ impl ExternalStorage<EntityProperty> for SqlxStorage {
             sqlx::any::AnyKind::MySql => {
                 let sql = format!(
                     r#"INSERT IGNORE INTO {}
+                    (entity_id, entity_content)
+                    values
+                    (?, ?)"#,
+                    self.entity_table,
+                );
+                let query = sqlx::query(&sql)
+                    .bind(id.to_string())
+                    .bind(serde_json::to_string_pretty(&entity.properties).unwrap());
+                conn.execute(query)
+                    .await
+                    .map_err(|e| RegistryError::ExternalStorageError(format!("{:?}", e)))?;
+            }
+            sqlx::any::AnyKind::Sqlite => {
+                let sql = format!(
+                    r#"INSERT OR IGNORE INTO {}
                     (entity_id, entity_content)
                     values
                     (?, ?)"#,
@@ -279,7 +335,8 @@ impl ExternalStorage<EntityProperty> for SqlxStorage {
         let mut conn = connect()
             .await
             .map_err(|e| RegistryError::ExternalStorageError(format!("{:?}", e)))?;
-        match conn.kind() {
+        let kind = conn.kind();
+        match kind {
             sqlx::any::AnyKind::Postgres => {
                 let sql = &format!(
                     r#"INSERT INTO {}
@@ -300,6 +357,22 @@ impl ExternalStorage<EntityProperty> for SqlxStorage {
             sqlx::any::AnyKind::MySql => {
                 let sql = format!(
                     r#"INSERT IGNORE INTO {}
+                    (from_id, to_id, edge_type)
+                    values
+                    (?, ?, ?)"#,
+                    self.edge_table,
+                );
+                let query = sqlx::query(&sql)
+                    .bind(from_id.to_string())
+                    .bind(to_id.to_string())
+                    .bind(format!("{:?}", edge_type));
+                conn.execute(query)
+                    .await
+                    .map_err(|e| RegistryError::ExternalStorageError(format!("{:?}", e)))?;
+            }
+            sqlx::any::AnyKind::Sqlite => {
+                let sql = format!(
+                    r#"INSERT OR IGNORE INTO {}
                     (from_id, to_id, edge_type)
                     values
                     (?, ?, ?)"#,

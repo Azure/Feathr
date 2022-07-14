@@ -11,7 +11,9 @@ use uuid::Uuid;
 
 use registry_provider::{Edge, EdgeType, Entity, EntityProperty, RegistryError};
 
-use crate::{db_registry::ExternalStorage, Registry};
+use crate::{db_registry::ExternalStorage, Registry, database::get_entity_table};
+
+use super::get_edge_table;
 
 fn edge_try_from_row(r: Row) -> Result<Edge, tiberius::error::Error> {
     let c: Option<&str> = r.get(0);
@@ -52,8 +54,7 @@ impl<'a> FromSql<'a> for EntityPropertyWrapper {
 async fn load_entities(
     conn: &mut PooledConnection<'static, ConnectionManager>,
 ) -> Result<Vec<EntityProperty>, anyhow::Error> {
-    let entities_table =
-        std::env::var("ENTITY_TABLE").unwrap_or_else(|_| "entities".to_string());
+    let entities_table = get_entity_table();
     debug!("Loading entities from {}", entities_table);
     let x: Vec<EntityProperty> = conn
         .simple_query(format!("SELECT entity_content from {}", entities_table))
@@ -159,8 +160,8 @@ impl MsSqlStorage {
 impl Default for MsSqlStorage {
     fn default() -> Self {
         Self::new(
-            &std::env::var("ENTITY_TABLE").unwrap_or_else(|_| "entities".to_string()),
-            &std::env::var("EDGE_TABLE").unwrap_or_else(|_| "edges".to_string()),
+            &get_entity_table(),
+            &get_edge_table(),
         )
     }
 }

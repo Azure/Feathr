@@ -8,6 +8,14 @@ mod mssql;
 #[cfg(feature = "ossdbms")]
 mod sqlx;
 
+fn get_entity_table() -> String {
+    std::env::var("ENTITY_TABLE").unwrap_or_else(|_| "entities".to_string())
+}
+
+fn get_edge_table() -> String {
+    std::env::var("EDGE_TABLE").unwrap_or_else(|_| "edges".to_string())
+}
+
 pub fn attach_storage(registry: &mut Registry<EntityProperty>) {
     #[cfg(feature = "mssql")]
     if mssql::validate_condition() {

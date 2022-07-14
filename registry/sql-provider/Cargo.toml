@@ -44,6 +44,7 @@ rand = "0.8"
 [features]
 default = ["mssql", "ossdbms"]
 mssql = ["tiberius", "bb8", "bb8-tiberius"]
-ossdbms = ["mysql", "postgres"]
+ossdbms = ["mysql", "postgres", "sqlite"]
 mysql = ["sqlx/mysql"]
 postgres = ["sqlx/postgres"]
+sqlite = ["sqlx/sqlite"]
