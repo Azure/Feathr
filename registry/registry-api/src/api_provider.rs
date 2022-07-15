@@ -3,7 +3,9 @@ use std::collections::HashSet;
 use async_trait::async_trait;
 use common_utils::{set, Blank};
 use log::debug;
-use registry_provider::{Edge, EdgeType, EntityProperty, RegistryError, RegistryProvider};
+use registry_provider::{
+    Edge, EdgeType, EntityProperty, EntityType, RegistryError, RegistryProvider,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -135,6 +137,9 @@ pub enum FeathrApiRequest {
         id_or_name: String,
     },
     GetFeatureLineage {
+        id_or_name: String,
+    },
+    GetEntityProject {
         id_or_name: String,
     },
     BatchLoad {
@@ -835,6 +840,24 @@ where
                 }
                 FeathrApiRequest::BatchLoad { entities, edges } => {
                     this.load_data(entities, edges).await.into()
+                }
+                FeathrApiRequest::GetEntityProject { id_or_name } => {
+                    let entity = this.get_entity_by_id_or_qualified_name(&id_or_name)?;
+                    if entity.entity_type == EntityType::Project {
+                        fill_entity(this, entity).into()
+                    } else {
+                        let id = get_id(this, id_or_name.clone())?;
+                        let containers = this.get_neighbors(id, EdgeType::BelongsTo)?;
+                        containers
+                            .iter()
+                            .find(|c| c.entity_type == EntityType::Project)
+                            .map(|c| fill_entity(this, c.to_owned()))
+                            .ok_or(RegistryError::EntityNotFound(format!(
+                                "Entity {} doesn't belong to any project",
+                                id_or_name
+                            )))?
+                            .into()
+                    }
                 }
             })
         }

@@ -349,4 +349,27 @@ impl FeathrApiV1 {
             .into_lineage()
             .map(Json)
     }
+
+    #[oai(
+        path = "/features/:feature/project",
+        method = "get",
+        tag = "ApiTags::Feature"
+    )]
+    async fn get_feature_project(
+        &self,
+        data: Data<&RaftRegistryApp>,
+        #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
+        feature: Path<String>,
+    ) -> poem::Result<Json<Entity>> {
+        data.0
+            .request(
+                opt_seq.0,
+                FeathrApiRequest::GetEntityProject {
+                    id_or_name: feature.0,
+                },
+            )
+            .await
+            .into_entity()
+            .map(Json)
+    }
 }
