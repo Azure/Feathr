@@ -34,7 +34,6 @@ sqlx = { version = "0.6.0", features = [
     "uuid",
     "macros",
 ], default-features = false, optional = true }
-azure_data_cosmos = { version = "0.4", optional = true}
 
 common-utils = { path = "../common-utils" }
 registry-provider = { path = "../registry-provider" }
@@ -43,10 +42,9 @@ registry-provider = { path = "../registry-provider" }
 rand = "0.8"
 
 [features]
-default = ["mssql", "ossdbms", "cosmosdb"]
+default = ["mssql", "ossdbms"]
 mssql = ["tiberius", "bb8", "bb8-tiberius"]
 ossdbms = ["mysql", "postgres", "sqlite"]
-cosmosdb = ["azure_data_cosmos"]
 mysql = ["sqlx/mysql"]
 postgres = ["sqlx/postgres"]
 sqlite = ["sqlx/sqlite"]
