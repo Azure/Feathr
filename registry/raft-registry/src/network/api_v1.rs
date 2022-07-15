@@ -328,7 +328,7 @@ impl FeathrApiV1 {
     }
 
     #[oai(
-        path = "/features/lineage/:feature",
+        path = "/features/:feature/lineage",
         method = "get",
         tag = "ApiTags::Feature"
     )]
