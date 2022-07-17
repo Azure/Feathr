@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, collections::HashMap};
 use std::hash::Hash;
 
 use serde::{Deserialize, Serialize};
@@ -142,21 +142,13 @@ pub struct SourceAttributes {
     #[serde(rename = "type")]
     pub type_: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dbtable: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub query: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub auth: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub preprocessing: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub event_timestamp_column: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub timestamp_format: Option<String>,
+    #[serde(flatten, default)]
+    pub options: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

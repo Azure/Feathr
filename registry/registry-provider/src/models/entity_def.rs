@@ -22,11 +22,8 @@ pub struct SourceDef {
     pub qualified_name: String,
     #[serde(rename = "type")]
     pub source_type: String,
-    pub path: Option<String>,
-    pub url: Option<String>,
-    pub dbtable: Option<String>,
-    pub query: Option<String>,
-    pub auth: Option<String>,
+    #[serde(flatten)]
+    pub options: HashMap<String, String>,
     pub event_timestamp_column: Option<String>,
     pub timestamp_format: Option<String>,
     pub preprocessing: Option<String>,

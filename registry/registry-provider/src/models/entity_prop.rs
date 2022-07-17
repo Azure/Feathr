@@ -78,11 +78,7 @@ impl EntityPropMutator for EntityProperty {
             labels: Default::default(),
             tags: definition.tags.to_owned(),
             attributes: Attributes::Source(SourceAttributes {
-                path: definition.path.to_owned(),
-                url: definition.url.to_owned(),
-                dbtable: definition.dbtable.to_owned(),
-                query: definition.query.to_owned(),
-                auth: definition.auth.to_owned(),
+                options: definition.options.to_owned(),
                 preprocessing: definition.preprocessing.to_owned(),
                 event_timestamp_column: definition.event_timestamp_column.to_owned(),
                 timestamp_format: definition.timestamp_format.to_owned(),

@@ -60,19 +60,7 @@ pub struct SourceDef {
     pub source_type: String,
     #[oai(default)]
     #[serde(default)]
-    pub path: Option<String>,
-    #[oai(default)]
-    #[serde(default)]
-    pub url: Option<String>,
-    #[oai(default)]
-    #[serde(default)]
-    pub dbtable: Option<String>,
-    #[oai(default)]
-    #[serde(default)]
-    pub query: Option<String>,
-    #[oai(default)]
-    #[serde(default)]
-    pub auth: Option<String>,
+    pub options: HashMap<String, String>,
     #[oai(default)]
     #[serde(default)]
     pub event_timestamp_column: Option<String>,
@@ -98,11 +86,7 @@ impl TryInto<registry_provider::SourceDef> for SourceDef {
             qualified_name: self.qualified_name,
             name: self.name,
             source_type: self.source_type,
-            path: self.path,
-            url: self.url,
-            dbtable: self.dbtable,
-            query: self.query,
-            auth: self.auth,
+            options: self.options,
             event_timestamp_column: self.event_timestamp_column,
             timestamp_format: self.timestamp_format,
             preprocessing: self.preprocessing,
