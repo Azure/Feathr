@@ -3,6 +3,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::utils::{dur_to_string, str_to_dur};
 
+pub trait GetSecretKeys {
+    fn get_secret_keys(&self) -> Vec<String>;
+}
+
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ValueType {

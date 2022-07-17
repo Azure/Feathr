@@ -111,6 +111,17 @@ pub(crate) fn dur_to_string(d: Duration) -> String {
     }
 }
 
+pub fn parse_secret(s: &str) -> Option<String> {
+    if let Some(start) = s.find("${") {
+        if let Some(end) = s[start..].find("}") {
+            if start < end {
+                return Some(s[start + 2..start+end].to_string());
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Duration;

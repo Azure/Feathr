@@ -22,7 +22,10 @@ struct EnvVarSource;
 impl VarSource for EnvVarSource {
     async fn get_environment_variable(&self, name: &[&str]) -> Result<String, crate::Error> {
         let name: Vec<&str> = name.into_iter().map(|s| s.as_ref()).collect();
-        Ok(std::env::var(name.join("__").to_uppercase())?)
+        Ok(
+            std::env::var(name.join("__"))
+                .or_else(|_| std::env::var(name.join("__").to_uppercase()))?,
+        )
     }
 }
 
@@ -151,13 +154,9 @@ where
     T: AsRef<str>,
 {
     match YamlSource::from_str(content.as_ref()) {
-        Ok(src) => {
-            Arc::new(src)
-        }
+        Ok(src) => Arc::new(src),
         Err(_) => {
-            warn!(
-                "Failed read Feathr config, using environment variables."
-            );
+            warn!("Failed read Feathr config, using environment variables.");
             Arc::new(EnvVarSource)
         }
     }

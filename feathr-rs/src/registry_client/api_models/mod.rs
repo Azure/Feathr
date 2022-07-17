@@ -32,7 +32,8 @@ pub struct SourceDef {
     pub name: String,
     #[serde(rename = "type")]
     pub source_type: String,
-    pub path: String,
+    #[serde(default)]
+    pub options: HashMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub event_timestamp_column: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -45,17 +46,58 @@ pub struct SourceDef {
 
 impl From<SourceImpl> for SourceDef {
     fn from(s: SourceImpl) -> Self {
-        let (t, path) = match s.location {
-            crate::SourceLocation::Hdfs { path } => ("hdfs".to_string(), path),
-            crate::SourceLocation::InputContext => {
-                ("PASSTHROUGH".to_string(), "PASSTHROUGH".to_string())
+        let (source_type, options) = match s.location {
+            crate::DataLocation::InputContext => {
+                ("PASSTHROUGH", HashMap::new())
+            }
+            crate::DataLocation::Hdfs { path } => ("hdfs", {
+                let mut options = HashMap::new();
+                options.insert("path".to_string(), path);
+                options
+            }),
+            crate::DataLocation::Jdbc {
+                url,
+                dbtable,
+                query,
+                auth,
+                ..
+            } => {
+                let mut options = HashMap::new();
+                options.insert("url".to_string(), url);
+                if let Some(dbtable) = dbtable {
+                    options.insert("dbtable".to_string(), dbtable);
+                }
+                if let Some(query) = query {
+                    options.insert("query".to_string(), query);
+                }
+                match auth {
+                    crate::JdbcAuth::Userpass { .. } => {
+                        options.insert("auth".to_string(), "userpass".to_string());
+                    }
+                    crate::JdbcAuth::Token { .. } => {
+                        options.insert("auth".to_string(), "token".to_string());
+                    }
+                    crate::JdbcAuth::Anonymous => {}
+                }
+                ("jdbc", options)
+            }
+            crate::DataLocation::Generic {
+                format,
+                mode,
+                mut options,
+            } => {
+                options.insert("format".to_string(), format);
+                if let Some(mode) = mode {
+                    options.insert("mode".to_string(), mode);
+                }
+                ("generic", options)
             }
             _ => todo!(),
         };
         Self {
             name: s.name,
-            source_type: t,
-            path,
+            source_type: source_type.to_string(),
+            options,
             event_timestamp_column: s.time_window_parameters.clone().map(|t| t.timestamp_column),
             timestamp_format: s.time_window_parameters.map(|t| t.timestamp_column_format),
             preprocessing: s.preprocessing,

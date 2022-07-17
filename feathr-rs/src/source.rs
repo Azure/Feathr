@@ -1,4 +1,4 @@
-use std::{sync::Arc, collections::HashMap};
+use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -6,12 +6,12 @@ use uuid::Uuid;
 
 use crate::{
     project::{FeathrProjectImpl, FeathrProjectModifier},
-    Error,
+    Error, utils::parse_secret, GetSecretKeys,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
-pub(crate) enum JdbcAuth {
+pub enum JdbcAuth {
     Userpass { user: String, password: String },
     Token { token: String },
     Anonymous,
@@ -32,14 +32,14 @@ impl Serialize for JdbcAuth {
             JdbcAuth::Userpass { user, password } => {
                 let mut state = serializer.serialize_struct("JdbcAuth", 3)?;
                 state.serialize_field("type", "jdbc")?;
-                state.serialize_field("user", &user)?;
-                state.serialize_field("password", &password)?;
+                state.serialize_field("user", user)?;
+                state.serialize_field("password", password)?;
                 state.end()
             }
             JdbcAuth::Token { token } => {
                 let mut state = serializer.serialize_struct("JdbcAuth", 4)?;
                 state.serialize_field("type", "jdbc")?;
-                state.serialize_field("token", &token)?;
+                state.serialize_field("token", token)?;
                 state.serialize_field("useToken", &true)?;
                 state.end()
             }
@@ -58,7 +58,7 @@ pub struct KafkaSchema {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum SourceLocation {
+pub enum DataLocation {
     Hdfs {
         path: String,
     },
@@ -76,7 +76,98 @@ pub(crate) enum SourceLocation {
         topics: Vec<String>,
         schema: KafkaSchema,
     },
+    Generic {
+        format: String,
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        mode: Option<String>,
+        #[serde(flatten, default)]
+        options: HashMap<String, String>,
+    },
     InputContext,
+}
+
+impl FromStr for DataLocation {
+    type Err = crate::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+        Ok(if s.starts_with('{') && s.ends_with('}') {
+            serde_json::from_str(s)?
+        } else {
+            DataLocation::Hdfs {
+                path: s.to_string(),
+            }
+        })
+    }
+}
+
+impl ToString for DataLocation {
+    fn to_string(&self) -> String {
+        match &self {
+            DataLocation::Hdfs { path } => path.to_owned(),
+            _ => serde_json::to_string(&self).unwrap(),
+        }
+    }
+}
+
+impl DataLocation {
+    pub fn to_argument(&self) -> Result<String, crate::Error> {
+        match &self {
+            DataLocation::Hdfs { path } => Ok(path.to_owned()),
+            DataLocation::Jdbc { .. } | DataLocation::Generic { .. } => {
+                Ok(serde_json::to_string(&self)?)
+            }
+            DataLocation::Kafka { .. } => Err(crate::Error::InvalidArgument(
+                "Kafka cannot be used as output target".to_string(),
+            )),
+            DataLocation::InputContext => Err(crate::Error::InvalidArgument(
+                "INPUT_CONTEXT cannot be used as output target".to_string(),
+            )),
+        }
+    }
+
+    pub fn get_type(&self) -> String {
+        match &self {
+            DataLocation::Hdfs { .. } => "hdfs".to_string(),
+            DataLocation::Jdbc { .. } => "jdbc".to_string(),
+            DataLocation::Kafka { .. } => "kafka".to_string(),
+            DataLocation::Generic { .. } => "generic".to_string(),
+            DataLocation::InputContext => "INPUT_CONTEXT".to_string(),
+        }
+    }
+}
+
+impl GetSecretKeys for DataLocation {
+    fn get_secret_keys(&self) -> Vec<String> {
+        let mut secrets = vec![];
+        match &self {
+            DataLocation::Jdbc { auth, .. } => match auth {
+                JdbcAuth::Userpass { user, password } => {
+                    if let Some(s) = parse_secret(&user) {
+                        secrets.push(s);
+                    }
+                    if let Some(s) = parse_secret(&password) {
+                        secrets.push(s);
+                    }
+                }
+                JdbcAuth::Token { token } => {
+                    if let Some(s) = parse_secret(&token) {
+                        secrets.push(s);
+                    }
+                }
+                JdbcAuth::Anonymous => (),
+            },
+            DataLocation::Generic { options, .. } => {
+                for (_, v) in options {
+                    if let Some(s) = parse_secret(v) {
+                        secrets.push(s);
+                    }
+                }
+            }
+            _ => (),
+        }
+        secrets
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,7 +186,7 @@ pub(crate) struct SourceImpl {
     pub(crate) version: u64,
     #[serde(skip)]
     pub(crate) name: String,
-    pub(crate) location: SourceLocation,
+    pub(crate) location: DataLocation,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) time_window_parameters: Option<TimeWindowParameters>,
     #[serde(skip)]
@@ -117,7 +208,7 @@ impl SourceImpl {
             id: Uuid::new_v4(),
             version: 1,
             name: "PASSTHROUGH".to_string(),
-            location: SourceLocation::InputContext,
+            location: DataLocation::InputContext,
             time_window_parameters: None,
             preprocessing: None,
             registry_tags: Default::default(),
@@ -125,12 +216,12 @@ impl SourceImpl {
     }
 
     pub(crate) fn is_input_context(&self) -> bool {
-        matches!(self.location, SourceLocation::InputContext)
+        matches!(self.location, DataLocation::InputContext)
     }
 
     pub(crate) fn get_secret_keys(&self) -> Vec<String> {
         match &self.location {
-            SourceLocation::Jdbc { auth, .. } => match auth {
+            DataLocation::Jdbc { auth, .. } => match auth {
                 JdbcAuth::Userpass { .. } => vec![
                     format!("{}_USER", self.name),
                     format!("{}_PASSWORD", self.name),
@@ -138,14 +229,49 @@ impl SourceImpl {
                 JdbcAuth::Token { .. } => vec![format!("{}_TOKEN", self.name)],
                 _ => vec![],
             },
+            DataLocation::Generic { options, .. } => options
+                .keys()
+                .filter_map(|k| {
+                    if let Some(start) = k.find("${") {
+                        if let Some(end) = k[start..].find("}") {
+                            Some(k[start + 2..start + end].to_string())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
             _ => vec![],
         }
+    }
+}
+
+impl GetSecretKeys for SourceImpl {
+    fn get_secret_keys(&self) -> Vec<String> {
+        self.location.get_secret_keys()
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Source {
     pub(crate) inner: Arc<SourceImpl>,
+}
+
+impl GetSecretKeys for Source {
+    fn get_secret_keys(&self) -> Vec<String> {
+        self.inner.get_secret_keys()
+    }
+}
+
+impl Serialize for Source {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.inner.serialize(serializer)
+    }
 }
 
 impl Default for Source {
@@ -167,6 +293,14 @@ impl Source {
 
     pub fn get_name(&self) -> String {
         self.inner.name.clone()
+    }
+
+    pub fn get_type(&self) -> String {
+        self.inner.location.get_type()
+    }
+
+    pub fn get_location(&self) -> DataLocation {
+        self.inner.location.clone()
     }
 
     pub fn get_secret_keys(&self) -> Vec<String> {
@@ -226,7 +360,7 @@ impl HdfsSourceBuilder {
             id: Uuid::new_v4(),
             version: 1,
             name: self.name.to_string(),
-            location: SourceLocation::Hdfs {
+            location: DataLocation::Hdfs {
                 path: self.path.clone(),
             },
             time_window_parameters: self.time_window_parameters.clone(),
@@ -314,15 +448,16 @@ impl JdbcSourceBuilder {
     }
 
     pub async fn build(&self) -> Result<Source, Error> {
+        let auth = self.auth.clone().unwrap_or(JdbcAuth::Anonymous);
         let imp = SourceImpl {
             id: Uuid::new_v4(),
             version: 1,
             name: self.name.to_string(),
-            location: SourceLocation::Jdbc {
+            location: DataLocation::Jdbc {
                 url: self.url.clone(),
                 dbtable: self.dbtable.to_owned(),
                 query: self.query.to_owned(),
-                auth: self.auth.clone().unwrap_or(JdbcAuth::Anonymous),
+                auth,
             },
             time_window_parameters: self.time_window_parameters.clone(),
             preprocessing: self.preprocessing.clone(),
@@ -405,7 +540,7 @@ impl KafkaSourceBuilder {
             id: Uuid::new_v4(),
             version: 1,
             name: self.name.to_string(),
-            location: SourceLocation::Kafka {
+            location: DataLocation::Kafka {
                 brokers: self.brokers.clone(),
                 topics: self.topics.clone(),
                 schema: KafkaSchema {
@@ -418,5 +553,148 @@ impl KafkaSourceBuilder {
             registry_tags: Default::default(),
         };
         self.owner.insert_source(imp).await
+    }
+}
+
+pub struct GenericSourceBuilder {
+    owner: Arc<RwLock<FeathrProjectImpl>>,
+    name: String,
+    format: String,
+    mode: Option<String>,
+    options: HashMap<String, String>,
+    time_window_parameters: Option<TimeWindowParameters>,
+    preprocessing: Option<String>,
+}
+
+impl GenericSourceBuilder {
+    pub(crate) fn new<T>(owner: Arc<RwLock<FeathrProjectImpl>>, name: &str, format: T) -> Self
+    where
+        T: ToString,
+    {
+        Self {
+            owner,
+            name: name.to_string(),
+            format: format.to_string(),
+            mode: None,
+            options: Default::default(),
+            time_window_parameters: None,
+            preprocessing: None,
+        }
+    }
+
+    pub fn mode<T>(&mut self, mode: T) -> &mut Self
+    where
+        T: ToString,
+    {
+        self.mode = Some(mode.to_string());
+        self
+    }
+
+    pub fn option<T1, T2>(&mut self, key: T1, value: T2) -> &mut Self
+    where
+        T1: ToString,
+        T2: ToString,
+    {
+        self.options
+            .insert(key.to_string().replace('.', "__"), value.to_string());
+        self
+    }
+
+    pub fn options<I, K, V>(&mut self, iter: I) -> &mut Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: ToString,
+        V: ToString,
+    {
+        iter.into_iter().for_each(|(key, value)| {
+            self.options
+                .insert(key.to_string().replace('.', "__"), value.to_string());
+        });
+        self
+    }
+
+    pub fn time_window(
+        &mut self,
+        timestamp_column: &str,
+        timestamp_column_format: &str,
+    ) -> &mut Self {
+        self.time_window_parameters = Some(TimeWindowParameters {
+            timestamp_column: timestamp_column.to_string(),
+            timestamp_column_format: timestamp_column_format.to_string(),
+        });
+        self
+    }
+
+    pub fn preprocessing(&mut self, preprocessing: &str) -> &mut Self {
+        self.preprocessing = Some(preprocessing.to_string());
+        self
+    }
+
+    pub async fn build(&self) -> Result<Source, Error> {
+        let imp = SourceImpl {
+            id: Uuid::new_v4(),
+            version: 1,
+            name: self.name.to_string(),
+            location: DataLocation::Generic {
+                format: self.format.clone(),
+                mode: self.mode.clone(),
+                options: self.options.clone(),
+            },
+            time_window_parameters: self.time_window_parameters.clone(),
+            preprocessing: self.preprocessing.clone(),
+            registry_tags: Default::default(),
+        };
+        self.owner.insert_source(imp).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, str::FromStr};
+
+    use crate::DataLocation;
+
+    #[test]
+    fn data_location() {
+        let loc = DataLocation::from_str("s3://bucket/key").unwrap();
+        assert_eq!(
+            loc,
+            DataLocation::Hdfs {
+                path: "s3://bucket/key".to_string()
+            }
+        );
+        assert_eq!(loc.to_argument().unwrap(), "s3://bucket/key");
+
+        let loc: DataLocation = "s3://bucket/key".parse().unwrap();
+        assert_eq!(
+            loc,
+            DataLocation::Hdfs {
+                path: "s3://bucket/key".to_string()
+            }
+        );
+        assert_eq!(loc.to_argument().unwrap(), "s3://bucket/key");
+
+        let loc: DataLocation = r#"{"format": "cosmos.oltp", "mode": "APPEND", "spark__cosmos__accountEndpoint": "https://xchcosmos1.documents.azure.com:443/", "spark__cosmos__accountKey": "${cosmos1_KEY}", "spark__cosmos__database": "feathr", "spark__cosmos__container": "abcde"}"#.parse().unwrap();
+        assert_eq!(
+            loc,
+            DataLocation::Generic {
+                format: "cosmos.oltp".to_string(),
+                mode: Some("APPEND".to_string()),
+                options: {
+                    let mut options = HashMap::new();
+                    options.insert(
+                        "spark__cosmos__accountEndpoint".to_string(),
+                        "https://xchcosmos1.documents.azure.com:443/".to_string(),
+                    );
+                    options.insert(
+                        "spark__cosmos__accountKey".to_string(),
+                        "${cosmos1_KEY}".to_string(),
+                    );
+                    options.insert("spark__cosmos__database".to_string(), "feathr".to_string());
+                    options.insert("spark__cosmos__container".to_string(), "abcde".to_string());
+                    options
+                }
+            }
+        );
     }
 }

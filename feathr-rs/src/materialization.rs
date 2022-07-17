@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 
-use crate::Error;
+use crate::{Error, DataLocation, GetSecretKeys};
 
 const END_TIME_FORMAT: &str = "yyyy-MM-dd HH:mm:ss";
 
@@ -58,6 +58,16 @@ impl RedisSink {
 #[serde(tag = "name", content = "params", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum OutputSink {
     Redis(RedisSink),
+    Hdfs(DataLocation),
+}
+
+impl GetSecretKeys for OutputSink {
+    fn get_secret_keys(&self) -> Vec<String> {
+        match &self {
+            OutputSink::Redis(_) => vec![],
+            OutputSink::Hdfs(l) => l.get_secret_keys(),
+        }
+    }
 }
 
 impl From<&OutputSink> for OutputSink {
@@ -75,6 +85,18 @@ impl From<RedisSink> for OutputSink {
 impl From<&RedisSink> for OutputSink {
     fn from(s: &RedisSink) -> Self {
         Self::Redis(s.to_owned())
+    }
+}
+
+impl From<DataLocation> for OutputSink {
+    fn from(s: DataLocation) -> Self {
+        Self::Hdfs(s)
+    }
+}
+
+impl From<&DataLocation> for OutputSink {
+    fn from(s: &DataLocation) -> Self {
+        Self::Hdfs(s.to_owned())
     }
 }
 

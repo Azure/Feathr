@@ -70,7 +70,7 @@ offline_store:
 spark_config:
   # choice for spark runtime. Currently support: azure_synapse, databricks
   # The `databricks` configs will be ignored if `azure_synapse` is set and vice versa.
-  spark_cluster: 'azure_synapse'
+  spark_cluster: 'databricks'
   # configure number of parts for the spark output for feature generation job
   spark_result_output_parts: '1'
 
@@ -84,7 +84,7 @@ spark_config:
     # Feathr Job configuration. Support local paths, path start with http(s)://, and paths start with abfs(s)://
     # this is the default location so end users don't have to compile the runtime again.
     # feathr_runtime_location: wasbs://public@azurefeathrstorage.blob.core.windows.net/feathr-assembly-0.1.0-SNAPSHOT.jar
-    feathr_runtime_location: "wasbs://public@xchfeathrtest4sto.blob.core.windows.net/feathr-assembly-0.4.0.jar"
+    feathr_runtime_location: "wasbs://public@xchfeathrtest4sto.blob.core.windows.net/feathr-assembly-0.5.0.jar"
   databricks:
     # workspace instance
     workspace_instance_url: 'https://adb-5638037984879289.9.azuredatabricks.net/'
@@ -96,7 +96,7 @@ spark_config:
     work_dir: 'dbfs:/feathr_getting_started'
     # this is the default location so end users don't have to compile the runtime again.
     # feathr_runtime_location: "../../target/scala-2.12/feathr-assembly-0.1.0.jar"
-    # feathr_runtime_location: "dbfs:/feathr-assembly-0.4.0.jar"
+    feathr_runtime_location: "dbfs:/feathr-assembly-0.5.0.jar"
 
 online_store:
   redis:

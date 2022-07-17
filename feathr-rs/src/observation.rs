@@ -1,17 +1,24 @@
-use serde::Serialize;
+use serde::{ser::SerializeStruct, Serialize};
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+use crate::{DataLocation, GetSecretKeys};
+
+#[derive(Clone, Debug)]
 pub struct ObservationSettings {
-    pub observation_path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observation_path: DataLocation,
     pub settings: Option<ObservationInnerSettings>,
 }
 
 impl ObservationSettings {
-    pub fn new(observation_path: &str, timestamp_column: &str, format: &str) -> Self {
-        Self {
-            observation_path: observation_path.to_string(),
+    pub fn new<T>(
+        observation_path: T,
+        timestamp_column: &str,
+        format: &str,
+    ) -> Result<Self, crate::Error>
+    where
+        T: AsRef<str>,
+    {
+        Ok(Self {
+            observation_path: observation_path.as_ref().parse()?,
             settings: Some(ObservationInnerSettings {
                 join_time_settings: JoinTimeSettings {
                     timestamp_column: TimestampColumn {
@@ -20,23 +27,47 @@ impl ObservationSettings {
                     },
                 },
             }),
-        }
+        })
     }
 
-    pub fn from_path(observation_path: &str) -> Self {
-        Self {
-            observation_path: observation_path.to_string(),
+    pub fn from_path<T>(observation_path: T) -> Result<Self, crate::Error>
+    where
+        T: AsRef<str>,
+    {
+        Ok(Self {
+            observation_path: observation_path.as_ref().parse()?,
             settings: None,
-        }
+        })
     }
 }
 
-impl<T> From<T> for ObservationSettings
-where
-    T: AsRef<str>,
-{
-    fn from(s: T) -> Self {
-        Self::from_path(s.as_ref())
+impl GetSecretKeys for ObservationSettings {
+    fn get_secret_keys(&self) -> Vec<String> {
+        self.observation_path.get_secret_keys()
+    }
+}
+
+impl Serialize for ObservationSettings {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct(
+            "ObservationSettings",
+            if self.settings.is_none() { 1 } else { 2 },
+        )?;
+        match &self.observation_path {
+            DataLocation::Hdfs { path } => {
+                state.serialize_field("observationPath", path)?;
+            }
+            _ => {
+                state.serialize_field("observationPath", &self.observation_path)?;
+            }
+        }
+        if let Some(s) = &self.settings {
+            state.serialize_field("settings", s)?;
+        }
+        state.end()
     }
 }
 

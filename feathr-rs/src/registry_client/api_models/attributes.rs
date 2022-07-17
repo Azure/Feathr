@@ -144,7 +144,8 @@ impl TryInto<crate::project::FeathrProjectImpl> for (Uuid, u64, ProjectAttribute
 pub struct SourceAttributes {
     pub qualified_name: String,
     pub name: String,
-    pub path: String,
+    #[serde(flatten, default)]
+    pub options: HashMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preprocessing: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -165,25 +166,104 @@ impl TryInto<crate::source::SourceImpl> for (Uuid, u64, SourceAttributes) {
                 id: self.0,
                 version: 1,
                 name: self.2.name,
-                location: crate::SourceLocation::InputContext,
+                location: crate::DataLocation::InputContext,
                 time_window_parameters: None,
                 preprocessing: None,
                 registry_tags: Default::default(),
             }
         } else {
-            SourceImpl {
-                id: self.0,
-                version: self.1,
-                name: self.2.name,
-                location: crate::SourceLocation::Hdfs { path: self.2.path },
-                time_window_parameters: self.2.event_timestamp_column.map(|c| {
-                    crate::TimeWindowParameters {
-                        timestamp_column: c,
-                        timestamp_column_format: self.2.timestamp_format.unwrap_or_default(),
-                    }
-                }),
-                preprocessing: self.2.preprocessing,
-                registry_tags: self.2.tags,
+            match self.2.type_.to_lowercase().as_str() {
+                "jdbc" => SourceImpl {
+                    id: self.0,
+                    version: self.1,
+                    name: self.2.name.clone(),
+                    location: crate::DataLocation::Jdbc {
+                        url: self
+                            .2
+                            .options
+                            .get("url")
+                            .ok_or(crate::Error::MissingOption("url".to_string()))?
+                            .to_owned(),
+                        dbtable: self.2.options.get("dbtable").cloned(),
+                        query: self.2.options.get("query").cloned(),
+                        auth: match self.2.options.get("auth") {
+                            Some(auth) => match auth.as_str().to_lowercase().as_str() {
+                                "userpass" => crate::JdbcAuth::Userpass {
+                                    user: format!("${{{}_USER}}", self.2.name),
+                                    password: format!("${{{}_PASSWORD}}", self.2.name),
+                                },
+                                "token" => crate::JdbcAuth::Token {
+                                    token: format!("${{{}_TOKEN}}", self.2.name),
+                                },
+                                _ => {
+                                    return Err(crate::Error::InvalidOption(
+                                        "auth".to_string(),
+                                        auth.to_owned(),
+                                    ))
+                                }
+                            },
+                            None => crate::JdbcAuth::Anonymous,
+                        },
+                    },
+                    time_window_parameters: self.2.event_timestamp_column.map(|c| {
+                        crate::TimeWindowParameters {
+                            timestamp_column: c,
+                            timestamp_column_format: self.2.timestamp_format.unwrap_or_default(),
+                        }
+                    }),
+                    preprocessing: self.2.preprocessing,
+                    registry_tags: self.2.tags,
+                },
+                "generic" => SourceImpl {
+                    id: self.0,
+                    version: self.1,
+                    name: self.2.name,
+                    location: crate::DataLocation::Generic {
+                        format: self
+                            .2
+                            .options
+                            .get("format")
+                            .ok_or(crate::Error::MissingOption("format".to_string()))?
+                            .to_owned(),
+                        mode: self.2.options.get("mode").cloned(),
+                        options: self.2.options.clone(),
+                    },
+                    time_window_parameters: self.2.event_timestamp_column.map(|c| {
+                        crate::TimeWindowParameters {
+                            timestamp_column: c,
+                            timestamp_column_format: self.2.timestamp_format.unwrap_or_default(),
+                        }
+                    }),
+                    preprocessing: self.2.preprocessing,
+                    registry_tags: self.2.tags,
+                },
+                "hdfs" | "wasb" | "wasbs" | "dbfs" | "s3" => SourceImpl {
+                    id: self.0,
+                    version: self.1,
+                    name: self.2.name,
+                    location: crate::DataLocation::Hdfs {
+                        path: self
+                            .2
+                            .options
+                            .get("path")
+                            .ok_or(crate::Error::MissingOption("path".to_string()))?
+                            .to_owned(),
+                    },
+                    time_window_parameters: self.2.event_timestamp_column.map(|c| {
+                        crate::TimeWindowParameters {
+                            timestamp_column: c,
+                            timestamp_column_format: self.2.timestamp_format.unwrap_or_default(),
+                        }
+                    }),
+                    preprocessing: self.2.preprocessing,
+                    registry_tags: self.2.tags,
+                },
+                _ => {
+                    return Err(crate::Error::InvalidOption(
+                        "type".to_string(),
+                        self.2.type_.to_owned(),
+                    ))
+                },
             }
         })
     }

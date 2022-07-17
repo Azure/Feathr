@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc, collections::HashMap};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use chrono::Duration;
 use futures::future::join_all;
@@ -7,8 +7,9 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::{
-    job_client, load_var_source, new_var_source, Error, FeathrApiClient, FeathrProject, JobClient,
-    JobId, JobStatus, SubmitJobRequest, VarSource, FeatureRegistry, registry_client::api_models, project::FeathrProjectImpl,
+    job_client, load_var_source, new_var_source, project::FeathrProjectImpl,
+    registry_client::api_models, Error, FeathrApiClient, FeathrProject, FeatureRegistry, JobClient,
+    JobId, JobStatus, SubmitJobRequest, VarSource,
 };
 
 #[derive(Clone, Debug)]
@@ -50,7 +51,11 @@ impl FeathrClient {
         self.new_project_with_tags(name, Default::default()).await
     }
 
-    pub async fn new_project_with_tags(&self, name: &str, tags: HashMap<String, String>) -> Result<FeathrProject, Error> {
+    pub async fn new_project_with_tags(
+        &self,
+        name: &str,
+        tags: HashMap<String, String>,
+    ) -> Result<FeathrProject, Error> {
         let (id, version) = if let Some(r) = self.inner.get_registry_client() {
             let def = api_models::ProjectDef {
                 name: name.to_string(),
@@ -301,6 +306,17 @@ mod tests {
             .await
             .unwrap();
 
+        // let batch_source = proj.jdbc_source("nycTaxiBatchSource", "jdbc:sqlserver://feathrtestsql4.database.windows.net:1433;database=testsql;encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;")
+        //     .dbtable("green_tripdata_2020_04")
+        //     .auth(JdbcSourceAuth::Userpass)
+        //     .time_window(
+        //         "lpep_dropoff_datetime",
+        //         "yyyy-MM-dd HH:mm:ss"
+        //     )
+        //     .preprocessing("testudf.add_new_fare_amount")
+        //     .build()
+        //     .await
+        //     .unwrap();
         let request_features = proj
             .anchor_group("request_features", proj.INPUT_CONTEXT().await)
             .build()
@@ -410,9 +426,12 @@ mod tests {
             .await
             .unwrap();
 
-        println!("features.conf:\n{}", proj.get_feature_config().await.unwrap());
+        println!(
+            "features.conf:\n{}",
+            proj.get_feature_config().await.unwrap()
+        );
 
-        let output = client.get_remote_url("output.bin");
+        let output = client.get_remote_url("a-output.bin");
         let anchor_query = FeatureQuery::new(
             &[
                 &f_trip_distance,
@@ -429,7 +448,7 @@ mod tests {
             &[&f_trip_time_distance, &f_trip_time_rounded],
             &[&location_id],
         );
-        let ob = ObservationSettings::new("wasbs://public@azurefeathrstorage.blob.core.windows.net/sample_data/green_tripdata_2020-04.csv", "lpep_dropoff_datetime", "yyyy-MM-dd HH:mm:ss");
+        let ob = ObservationSettings::new("wasbs://public@azurefeathrstorage.blob.core.windows.net/sample_data/green_tripdata_2020-04.csv", "lpep_dropoff_datetime", "yyyy-MM-dd HH:mm:ss").unwrap();
 
         println!(
             "features_join.conf:\n{}",
@@ -442,7 +461,8 @@ mod tests {
             .await
             .unwrap()
             .python_file("test-script/testudf.py")
-            .output_path(&output)
+            .output_location(&output)
+            .unwrap()
             .build();
 
         println!("Request: {:#?}", req);
@@ -471,7 +491,10 @@ mod tests {
     async fn test_load() {
         let client = init().await;
         let proj = client.load_project("p1").await.unwrap();
-        println!("features.conf:\n{}", proj.get_feature_config().await.unwrap());
+        println!(
+            "features.conf:\n{}",
+            proj.get_feature_config().await.unwrap()
+        );
 
         let location_id = TypedKey::new("DOLocationID", ValueType::INT32)
             .full_name("nyc_taxi.location_id")
@@ -494,7 +517,7 @@ mod tests {
             &["f_trip_time_distance", "f_trip_time_rounded"],
             &[&location_id],
         );
-        let ob = ObservationSettings::new("wasbs://public@azurefeathrstorage.blob.core.windows.net/sample_data/green_tripdata_2020-04.csv", "lpep_dropoff_datetime", "yyyy-MM-dd HH:mm:ss");
+        let ob = ObservationSettings::new("wasbs://public@azurefeathrstorage.blob.core.windows.net/sample_data/green_tripdata_2020-04.csv", "lpep_dropoff_datetime", "yyyy-MM-dd HH:mm:ss").unwrap();
 
         println!(
             "features_join.conf:\n{}",
@@ -507,7 +530,8 @@ mod tests {
             .await
             .unwrap()
             .python_file("test-script/testudf.py")
-            .output_path(&output)
+            .output_location(&output)
+            .unwrap()
             .build();
 
         println!("Request: {:#?}", req);

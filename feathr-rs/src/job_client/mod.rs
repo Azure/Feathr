@@ -251,6 +251,10 @@ where
         var_source: Arc<dyn VarSource + Send + Sync>,
         request: &SubmitJobRequest,
     ) -> Result<Vec<String>, crate::Error> {
+        let mut secrets: HashMap<String, String> = Default::default();
+        for secret in request.secret_key.iter() {
+            secrets.insert(secret.to_string(), var_source.get_environment_variable(&[secret]).await?);
+        }
         let mut ret: Vec<String> = vec![
             "--s3-config".to_string(),
             self.get_s3_config(var_source.clone()).await?,
@@ -262,6 +266,8 @@ where
             self.get_sql_config(var_source.clone()).await?,
             "--snowflake-config".to_string(),
             self.get_snowflake_config(var_source.clone()).await?,
+            "--system-properties".to_string(),
+            serde_json::to_string(&secrets)?,
         ];
 
         let feature_config_url = self.get_remote_url(&format!(
@@ -584,8 +590,8 @@ impl SubmitJoiningJobRequestBuilder {
             configuration: Default::default(),
             feature_config,
             feature_join_config: job_config,
-            secret_keys: secret_keys,
-            user_functions: user_functions,
+            secret_keys,
+            user_functions,
         }
     }
 
@@ -603,9 +609,12 @@ impl SubmitJoiningJobRequestBuilder {
     /**
      * Set output path for the Spark job
      */
-    pub fn output_path(&mut self, output_path: &str) -> &mut Self {
+    pub fn output_location<T>(&mut self, output_path: T) -> Result<&mut Self, crate::Error>
+    where
+        T: ToString
+    {
         self.output_path = Some(output_path.to_string());
-        self
+        Ok(self)
     }
 
     /**

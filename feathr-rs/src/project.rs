@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
@@ -14,10 +15,10 @@ use crate::feature::{
 use crate::feature_builder::{AnchorFeatureBuilder, DerivedFeatureBuilder};
 use crate::registry_client::api_models::{EdgeType, EntityLineage, EntityType};
 use crate::{
-    DateTimeResolution, Error, Feature, FeatureQuery, FeatureRegistry, FeatureType,
-    HdfsSourceBuilder, JdbcSourceBuilder, KafkaSourceBuilder, ObservationSettings, Source,
-    SourceImpl, SourceLocation, SubmitGenerationJobRequestBuilder, SubmitJoiningJobRequestBuilder,
-    TypedKey,
+    DataLocation, DateTimeResolution, Error, Feature, FeatureQuery, FeatureRegistry, FeatureType,
+    GenericSourceBuilder, GetSecretKeys, HdfsSourceBuilder, JdbcSourceBuilder, KafkaSourceBuilder,
+    ObservationSettings, Source, SourceImpl, SubmitGenerationJobRequestBuilder,
+    SubmitJoiningJobRequestBuilder, TypedKey,
 };
 
 /**
@@ -227,6 +228,10 @@ impl FeathrProject {
         KafkaSourceBuilder::new(self.inner.clone(), name)
     }
 
+    pub fn generic_source(&self, name: &str, format: &str) -> GenericSourceBuilder {
+        GenericSourceBuilder::new(self.inner.clone(), name, format)
+    }
+
     /**
      * Returns the placeholder data source
      */
@@ -240,15 +245,16 @@ impl FeathrProject {
     /**
      * Creates the Spark job request for a feature-joining job
      */
-    pub async fn feature_join_job<O, Q>(
+    pub async fn feature_join_job<O, Q, L>(
         &self,
         observation_settings: O,
         feature_query: &[&Q],
-        output: &str,
+        output: L,
     ) -> Result<SubmitJoiningJobRequestBuilder, Error>
     where
         O: Into<ObservationSettings>,
         Q: Into<FeatureQuery> + Clone,
+        L: AsRef<str>,
     {
         let fq: Vec<FeatureQuery> = feature_query.iter().map(|&q| q.clone().into()).collect();
         let feature_names: Vec<String> = fq
@@ -256,13 +262,17 @@ impl FeathrProject {
             .flat_map(|q| q.feature_list.into_iter())
             .collect();
 
+        let mut secret_keys = self.get_secret_keys().await?;
+        let output_location = DataLocation::from_str(output.as_ref())?;
+        secret_keys.extend(output_location.get_secret_keys());
+
         let ob = observation_settings.into();
         Ok(SubmitJoiningJobRequestBuilder::new_join(
             format!("{}_feathr_feature_join_job", self.inner.read().await.name),
             ob.observation_path.to_string(),
             self.get_feature_config().await?,
-            self.get_feature_join_config(ob, feature_query, output)?,
-            self.get_secret_keys().await?,
+            self.get_feature_join_config(ob, feature_query, output_location.to_argument()?)?,
+            secret_keys,
             self.get_user_functions(&feature_names).await?,
         ))
     }
@@ -314,15 +324,16 @@ impl FeathrProject {
         Ok(s)
     }
 
-    pub(crate) fn get_feature_join_config<O, Q>(
+    pub(crate) fn get_feature_join_config<O, Q, T>(
         &self,
         observation_settings: O,
         feature_query: &[&Q],
-        output: &str,
+        output: T,
     ) -> Result<String, Error>
     where
         O: Into<ObservationSettings>,
         Q: Into<FeatureQuery> + Clone,
+        T: ToString,
     {
         // TODO: Validate feature names
 
@@ -340,7 +351,7 @@ impl FeathrProject {
                 .into_iter()
                 .map(|&q| q.to_owned().into())
                 .collect(),
-            output_path: output.to_string(),
+            output_path: output.to_string().parse::<DataLocation>()?.to_argument()?,
         };
         Ok(serde_json::to_string_pretty(&cfg)?)
     }
@@ -508,7 +519,7 @@ impl FeathrProjectImpl {
                 .await?;
         }
 
-        if !matches!(g.source.inner.location, SourceLocation::InputContext)
+        if !matches!(g.source.inner.location, DataLocation::InputContext)
             && (f.get_key().is_empty() || f.get_key() == vec![TypedKey::DUMMY_KEY()])
         {
             return Err(Error::DummyKeyUsedWithoutInputContext(f.get_name()));

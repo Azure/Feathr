@@ -97,6 +97,15 @@ pub enum Error {
     #[error("Entity({0}) has invalid type {1:?}")]
     InvalidEntityType(String, EntityType),
 
+    #[error("Invalid value `{1}` for option `{0}`")]
+    InvalidOption(String ,String),
+
+    #[error("Missing option `{0}`")]
+    MissingOption(String),
+
+    #[error("{0}")]
+    InvalidArgument(String),
+
     #[error("Feathr client is not connected to the registry")]
     DetachedClient,
 }

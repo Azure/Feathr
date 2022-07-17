@@ -30,6 +30,15 @@ pub struct AnchorFeature {
     pub(crate) inner: Arc<AnchorFeatureImpl>,
 }
 
+impl Serialize for AnchorFeature {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.inner.serialize(serializer)
+    }
+}
+
 impl AnchorFeature {
     pub async fn with_key(&self, group: &str, key_alias: &[&str]) -> Result<Self, Error> {
         self.owner
@@ -103,6 +112,15 @@ impl ToString for &AnchorFeature {
 pub struct DerivedFeature {
     pub(crate) owner: Arc<RwLock<FeathrProjectImpl>>,
     pub(crate) inner: Arc<DerivedFeatureImpl>,
+}
+
+impl Serialize for DerivedFeature {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.inner.serialize(serializer)
+    }
 }
 
 impl DerivedFeature {
