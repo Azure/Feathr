@@ -766,23 +766,28 @@ struct ObservationSettings(feathr::ObservationSettings);
 impl ObservationSettings {
     #[new]
     #[args(timestamp_column = "None", format = "None")]
-    fn new(observation_path: &str, timestamp_column: Option<&str>, format: Option<&str>) -> Self {
+    fn new(
+        observation_path: &str,
+        timestamp_column: Option<&str>,
+        format: Option<&str>,
+    ) -> PyResult<Self> {
         if let Some(timestamp_column) = timestamp_column {
             if let Some(format) = format {
-                Self(feathr::ObservationSettings::new(
-                    observation_path,
-                    timestamp_column,
-                    format,
+                Ok(Self(
+                    feathr::ObservationSettings::new(observation_path, timestamp_column, format)
+                        .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?,
                 ))
             } else {
-                Self(feathr::ObservationSettings::new(
-                    observation_path,
-                    timestamp_column,
-                    "epoch",
+                Ok(Self(
+                    feathr::ObservationSettings::new(observation_path, timestamp_column, "epoch")
+                        .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?,
                 ))
             }
         } else {
-            Self(feathr::ObservationSettings::from_path(observation_path))
+            Ok(Self(
+                feathr::ObservationSettings::from_path(observation_path)
+                    .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?,
+            ))
         }
     }
 
