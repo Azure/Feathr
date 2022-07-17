@@ -1,6 +1,10 @@
 use chrono::Duration;
-use futures::{Future, pin_mut};
-use pyo3::{exceptions::PyValueError, PyResult, Python};
+use futures::{pin_mut, Future};
+use pyo3::{
+    exceptions::PyValueError,
+    types::{PyDict, PyList},
+    IntoPy, PyObject, PyResult, Python,
+};
 use regex::Regex;
 
 /**
@@ -13,7 +17,7 @@ where
     // Future needs to be pinned then its mutable ref can be awaited multiple times.
     pin_mut!(f);
     loop {
-        match tokio::time::timeout(std::time::Duration::from_secs(1), &mut f).await {
+        match tokio::time::timeout(std::time::Duration::from_millis(100), &mut f).await {
             Ok(v) => {
                 return v;
             }
@@ -53,7 +57,9 @@ pub(crate) fn str_to_dur(s: &str) -> PyResult<Duration> {
             .ok_or_else(|| PyValueError::new_err(s.to_owned()))?
             .as_str();
         match unit {
-            "ns" | "nano" | "nanos" | "nanosecond" | "nanoseconds" => Ok(Duration::nanoseconds(num)),
+            "ns" | "nano" | "nanos" | "nanosecond" | "nanoseconds" => {
+                Ok(Duration::nanoseconds(num))
+            }
             "us" | "micro" | "micros" | "microsecond" | "microseconds" => {
                 Ok(Duration::microseconds(num))
             }
@@ -73,3 +79,33 @@ pub(crate) fn str_to_dur(s: &str) -> PyResult<Duration> {
     }
 }
 
+pub(crate) fn value_to_py<'p>(v: serde_json::Value, py: Python<'p>) -> PyObject {
+    match v {
+        serde_json::Value::Null => py.None(),
+        serde_json::Value::Bool(v) => v.into_py(py),
+        serde_json::Value::Number(v) => {
+            if v.is_f64() {
+                v.as_f64().into_py(py)
+            } else if v.is_i64() {
+                v.as_i64().into_py(py)
+            } else {
+                v.as_u64().into_py(py)
+            }
+        }
+        serde_json::Value::String(v) => v.into_py(py),
+        serde_json::Value::Array(a) => {
+            let py_list = PyList::empty(py);
+            for v in a {
+                py_list.append(value_to_py(v, py)).unwrap();
+            }
+            py_list.into()
+        }
+        serde_json::Value::Object(o) => {
+            let py_dict = PyDict::new(py);
+            for (k, v) in o {
+                py_dict.set_item(k, value_to_py(v, py)).unwrap();
+            }
+            py_dict.into()
+        }
+    }
+}

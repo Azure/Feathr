@@ -9,9 +9,9 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use feathr::Feature;
 use futures::future::join_all;
 use pyo3::exceptions::{PyKeyError, PyRuntimeError, PyValueError};
-use pyo3::types::{PyDateAccess, PyDateTime, PyList, PyTimeAccess};
+use pyo3::types::{PyDateAccess, PyDateTime, PyList, PyTimeAccess, PyTuple};
 use pyo3::{exceptions::PyTypeError, prelude::*, pyclass::CompareOp};
-use utils::{block_on, cancelable_wait};
+use utils::{block_on, cancelable_wait, value_to_py};
 
 mod utils;
 
@@ -500,6 +500,13 @@ impl Transformation {
             _ => Err(PyTypeError::new_err("Unsupported")),
         }
     }
+
+    #[getter]
+    fn __dict__<'p>(&self, py: Python<'p>) -> PyResult<PyObject> {
+        let map: serde_json::Value = serde_json::to_value(&self.0)
+            .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
+        Ok(value_to_py(map, py))
+    }
 }
 
 impl From<feathr::Transformation> for Transformation {
@@ -511,6 +518,57 @@ impl From<feathr::Transformation> for Transformation {
 impl Into<feathr::Transformation> for Transformation {
     fn into(self) -> feathr::Transformation {
         self.0
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DataLocation(feathr::DataLocation);
+#[pymethods]
+impl DataLocation {
+    #[new]
+    fn new<'p>(py: Python<'p>, value: &PyAny) -> PyResult<Self> {
+        if let Ok(s) = value.extract::<String>() {
+            Ok(DataLocation(
+                s.parse()
+                    .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?,
+            ))
+        } else {
+            let dumps: Py<PyAny> = py.import("json")?.getattr("dumps")?.into();
+            let ret = dumps.call1(py, PyTuple::new(py, &[value]))?;
+            if let Ok(s) = ret.extract::<String>(py) {
+                Ok(DataLocation(
+                    s.parse()
+                        .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?,
+                ))
+            } else {
+                Err(PyValueError::new_err("Invalid data location"))
+            }
+        }
+    }
+
+    #[getter]
+    fn get_type(&self) -> String {
+        self.0.get_type()
+    }
+
+    #[getter]
+    fn __dict__<'p>(&self, py: Python<'p>) -> PyResult<PyObject> {
+        let map: serde_json::Value = serde_json::to_value(&self.0)
+            .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
+        Ok(value_to_py(map, py))
+    }
+
+    fn __repr__(&self) -> String {
+        format!("DataLocation(type='{}')", self.get_type(),)
+    }
+
+    fn __richcmp__(&self, other: &Self, op: CompareOp) -> PyResult<bool> {
+        match op {
+            CompareOp::Eq => Ok(self == other),
+            CompareOp::Ne => Ok(self != other),
+            _ => Err(PyTypeError::new_err("Unsupported")),
+        }
     }
 }
 
@@ -533,6 +591,16 @@ impl Source {
     #[getter]
     fn get_name(&self) -> String {
         self.0.get_name()
+    }
+
+    #[getter]
+    fn get_type(&self) -> String {
+        self.0.get_type()
+    }
+
+    #[getter]
+    fn get_location(&self) -> DataLocation {
+        DataLocation(self.0.get_location())
     }
 
     #[getter]
@@ -560,6 +628,13 @@ impl Source {
             CompareOp::Ne => Ok(self != other),
             _ => Err(PyTypeError::new_err("Unsupported")),
         }
+    }
+
+    #[getter]
+    fn __dict__<'p>(&self, py: Python<'p>) -> PyResult<PyObject> {
+        let map: serde_json::Value = serde_json::to_value(&self.0)
+            .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
+        Ok(value_to_py(map, py))
     }
 }
 
@@ -674,6 +749,13 @@ impl RedisSink {
     fn __repr__(&self) -> String {
         format!("{:#?}", &self)
     }
+
+    #[getter]
+    fn __dict__<'p>(&self, py: Python<'p>) -> PyResult<PyObject> {
+        let map: serde_json::Value = serde_json::to_value(&self.0)
+            .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
+        Ok(value_to_py(map, py))
+    }
 }
 
 #[pyclass]
@@ -706,6 +788,13 @@ impl ObservationSettings {
 
     fn __repr__(&self) -> String {
         format!("{:#?}", &self)
+    }
+
+    #[getter]
+    fn __dict__<'p>(&self, py: Python<'p>) -> PyResult<PyObject> {
+        let map: serde_json::Value = serde_json::to_value(&self.0)
+            .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
+        Ok(value_to_py(map, py))
     }
 }
 
@@ -845,6 +934,13 @@ impl AnchorFeature {
             self.get_version()
         )
     }
+
+    #[getter]
+    fn __dict__<'p>(&self, py: Python<'p>) -> PyResult<PyObject> {
+        let map: serde_json::Value = serde_json::to_value(&self.0)
+            .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
+        Ok(value_to_py(map, py))
+    }
 }
 
 impl From<feathr::AnchorFeature> for AnchorFeature {
@@ -933,6 +1029,13 @@ impl DerivedFeature {
             self.get_name(),
             self.get_version()
         )
+    }
+
+    #[getter]
+    fn __dict__<'p>(&self, py: Python<'p>) -> PyResult<PyObject> {
+        let map: serde_json::Value = serde_json::to_value(&self.0)
+            .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
+        Ok(value_to_py(map, py))
     }
 }
 
@@ -1069,6 +1172,17 @@ impl FeathrProject {
     #[getter]
     pub fn get_sources(&self) -> PyResult<Vec<String>> {
         block_on(async { Ok(self.0.get_sources().await) })
+    }
+
+    pub fn get_source(&self, name: &str) -> PyResult<Source> {
+        block_on(async {
+            Ok(self
+                .0
+                .get_source(name)
+                .await
+                .map_err(|_| PyKeyError::new_err(name.to_string()))?
+                .into())
+        })
     }
 
     #[getter]
@@ -1279,13 +1393,64 @@ impl FeathrProject {
         })
     }
 
+    #[args(
+        mode = "None",
+        timestamp_column = "None",
+        timestamp_column_format = "None",
+        preprocessing = "None"
+    )]
+    pub fn cosmosdb_source(
+        &self,
+        name: &str,
+        endpoint: &str,
+        database: &str,
+        collection: &str,
+        mode: Option<String>,
+        timestamp_column: Option<String>,
+        timestamp_column_format: Option<String>,
+        preprocessing: Option<String>, // TODO: Use PyCallable?
+    ) -> PyResult<Source> {
+        let mut builder = self.0.generic_source(name, "cosmos.oltp");
+
+        if let Some(mode) = mode {
+            builder.mode(mode);
+        }
+
+        builder
+            .option("spark.cosmos.accountEndpoint", endpoint)
+            .option("spark.cosmos.database", database)
+            .option("spark.cosmos.container", collection)
+            .option("spark.cosmos.accountKey", format!("${{{}_KEY}}", name));
+
+        if let Some(timestamp_column) = timestamp_column {
+            if let Some(timestamp_column_format) = timestamp_column_format {
+                builder.time_window(&timestamp_column, &timestamp_column_format);
+            } else {
+                return Err(PyValueError::new_err(
+                    "timestamp_column_format must not be omitted",
+                ));
+            }
+        }
+
+        if let Some(preprocessing) = preprocessing {
+            builder.preprocessing(&preprocessing);
+        }
+
+        block_on(async {
+            Ok(builder
+                .build()
+                .await
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+                .into())
+        })
+    }
     // pub fn kafka_source(&self, name: &str, brokers: &PyList, topics: &PyList, avro_json: &PyAny) {}
 
     fn get_offline_features(
         &self,
         observation: &PyAny,
         feature_query: &PyList,
-        output: &str,
+        output: &PyAny,
     ) -> PyResult<u64> {
         let observation: ObservationSettings = observation.extract()?;
         let observation = observation.0;
@@ -1304,13 +1469,25 @@ impl FeathrProject {
         }
         let queries: Vec<&feathr::FeatureQuery> = queries.iter().map(|q| q).collect();
 
+        let output = if let Ok(s) = output.extract::<String>() {
+            s
+        } else if let Ok(f) = output.extract::<DataLocation>() {
+            f.0.to_argument()
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+        } else {
+            return Err(PyValueError::new_err(format!(
+                "output must be string or DataLocation object"
+            )));
+        };
+
         block_on(async {
             let request = self
                 .0
-                .feature_join_job(observation, &queries, output)
+                .feature_join_job(observation, &queries, &output)
                 .await
                 .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?
-                .output_path(output)
+                .output_location(&output)
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
                 .build();
             let client = self.1 .0.clone();
             Ok(client
@@ -1325,7 +1502,7 @@ impl FeathrProject {
         &'p self,
         observation: &PyAny,
         feature_query: &PyList,
-        output: &str,
+        output: &PyAny,
         py: Python<'p>,
     ) -> PyResult<&'p PyAny> {
         let observation: ObservationSettings = observation.extract()?;
@@ -1346,7 +1523,16 @@ impl FeathrProject {
         let queries: Vec<feathr::FeatureQuery> = queries.iter().map(|q| q.to_owned()).collect();
         let project = self.0.clone();
         let client = self.1 .0.clone();
-        let output = output.to_string();
+        let output = if let Ok(s) = output.extract::<String>() {
+            s
+        } else if let Ok(f) = output.extract::<DataLocation>() {
+            f.0.to_argument()
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+        } else {
+            return Err(PyValueError::new_err(format!(
+                "output must be string or DataLocation object"
+            )));
+        };
 
         pyo3_asyncio::tokio::future_into_py(py, async move {
             let queries: Vec<&feathr::FeatureQuery> = queries.iter().map(|q| q).collect();
@@ -1354,7 +1540,8 @@ impl FeathrProject {
                 .feature_join_job(observation, &queries, &output)
                 .await
                 .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?
-                .output_path(&output)
+                .output_location(&output)
+                .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
                 .build();
             Ok(client
                 .submit_job(request)
@@ -1712,6 +1899,7 @@ fn feathrs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<TypedKey>()?;
     m.add_class::<Aggregation>()?;
     m.add_class::<Transformation>()?;
+    m.add_class::<DataLocation>()?;
     m.add_class::<Source>()?;
     m.add_class::<JdbcSourceAuth>()?;
     m.add_class::<AnchorFeature>()?;
