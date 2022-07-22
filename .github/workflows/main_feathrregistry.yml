@@ -18,8 +18,8 @@ jobs:
     runs-on: 'ubuntu-latest'
 
     steps:
-    - name: Set current date as env variable
-      run: echo "NOW::$(date +'%Y-%m-%dT%H:%M:%S')" >> $GITHUB_ENV
+    - name: Get current timestamp
+      run: echo "TIMESTAMP=$(date +'%Y%m%d%H%M')" >> $GITHUB_ENV
 
     - uses: actions/checkout@v2
 
@@ -37,7 +37,7 @@ jobs:
       uses: docker/build-push-action@v2
       with:
         push: true
-        tags: xcacr.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_a903568e603d4f759024fd6c84e1ffb6 }}/xcacr/xcacr/windoze/feathr-registry:${{ env.NOW }}
+        tags: xcacr.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_a903568e603d4f759024fd6c84e1ffb6 }}/xcacr/xcacr/windoze/feathr-registry:${{ env.TIMESTAMP }}
         context: ./registry
 
   deploy:
@@ -55,4 +55,4 @@ jobs:
         app-name: 'feathrregistry'
         slot-name: 'production'
         publish-profile: ${{ secrets.AzureAppService_PublishProfile_b5d78d27d28f4285903f7d1f2d0a3cde }}
-        images: 'xcacr.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_a903568e603d4f759024fd6c84e1ffb6 }}/xcacr/xcacr/windoze/feathr-registry:${{ env.NOW }}'
+        images: 'xcacr.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_a903568e603d4f759024fd6c84e1ffb6 }}/xcacr/xcacr/windoze/feathr-registry:${{ env.TIMESTAMP }}'
