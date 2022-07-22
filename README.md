@@ -6,8 +6,9 @@ The repo has following contents:
 
 - `feathr-rs`, the Rust library for the Feathr project.
 - `python`, the Python wrapper for the Rust Feathr library, which can also be considered as an alternative to the Python client in the main Feathr repo.
+[![PyPI version](https://badge.fury.io/py/feathrs.svg)](https://badge.fury.io/py/feathrs)
 - `registry`, the Feathr registry server, backed by SQL server, with clustering support.
-
+[![Build and deploy Registry app to Azure Web App - feathrregistry](https://github.com/Azure/Feathr/actions/workflows/main_feathrregistry.yml/badge.svg?branch=main)](https://github.com/Azure/Feathr/actions/workflows/main_feathrregistry.yml)
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
