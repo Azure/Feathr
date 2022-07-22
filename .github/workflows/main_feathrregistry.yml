@@ -38,7 +38,7 @@ jobs:
       uses: docker/build-push-action@v2
       with:
         push: true
-        tags: xcacr.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_a903568e603d4f759024fd6c84e1ffb6 }}/xcacr/xcacr/windoze/feathr-registry:${{ steps.date.outputs.date }}
+        tags: xcacr.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_a903568e603d4f759024fd6c84e1ffb6 }}/xcacr/xcacr/windoze/feathr-registry:${{ env.TIMESTAMP }}
         context: ./registry
 
   deploy:
