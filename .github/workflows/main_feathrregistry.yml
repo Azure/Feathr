@@ -39,7 +39,7 @@ jobs:
       with:
         push: true
         tags: xcacr.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_a903568e603d4f759024fd6c84e1ffb6 }}/xcacr/xcacr/windoze/feathr-registry:daily-${{ steps.date.outputs.date }}
-        file: ./Dockerfile
+        context: ./registry
 
   deploy:
     runs-on: ubuntu-latest
