@@ -20,7 +20,7 @@ jobs:
     steps:
     - name: Get current date
       id: date
-      run: echo "TIMESTAMP::set-output name=date::$(date +'%Y%m%d%H%M')" >> $GITHUB_ENV
+      run: echo "TIMESTAMP::$(date +'%Y%m%d%H%M')" >> $GITHUB_ENV
 
     - uses: actions/checkout@v2
 
