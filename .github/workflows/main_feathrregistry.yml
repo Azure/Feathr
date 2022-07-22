@@ -1,16 +1,12 @@
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 
-name: Build and deploy Registry app
+name: Build and deploy container app to Azure Web App - feathrregistry
 
 on:
   push:
     branches:
       - main
-    paths:
-      - "registry/**"
-  schedule:
-    - cron: '0 11 * * *'
   workflow_dispatch:
 
 jobs:
@@ -27,16 +23,15 @@ jobs:
       uses: docker/login-action@v1
       with:
         registry: https://xcacr.azurecr.io/
-        username: ${{ secrets.AzureAppService_ContainerUsername_4da0dc091a964a20a1cbb1a8d1e4dff9 }}
-        password: ${{ secrets.AzureAppService_ContainerPassword_666bc4a7427e436dbb000198bdbd5e35 }}
+        username: ${{ secrets.AzureAppService_ContainerUsername_a903568e603d4f759024fd6c84e1ffb6 }}
+        password: ${{ secrets.AzureAppService_ContainerPassword_2e694df001914682ac8629697e467120 }}
 
     - name: Build and push container image to registry
       uses: docker/build-push-action@v2
       with:
         push: true
-        tags: xcacr.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_4da0dc091a964a20a1cbb1a8d1e4dff9 }}/xcacr/windoze/feathr-registry:${{ github.sha }}
-        context: ./registry
-        # file: ./Dockerfile
+        tags: xcacr.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_a903568e603d4f759024fd6c84e1ffb6 }}/xcacr/xcacr/windoze/feathr-registry:${{ github.sha }}
+        file: ./Dockerfile
 
   deploy:
     runs-on: ubuntu-latest
@@ -52,5 +47,5 @@ jobs:
       with:
         app-name: 'feathrregistry'
         slot-name: 'production'
-        publish-profile: ${{ secrets.AzureAppService_PublishProfile_f4848ae6b2dc4f42b8e56187d283fca4 }}
-        images: 'xcacr.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_4da0dc091a964a20a1cbb1a8d1e4dff9 }}/xcacr/windoze/feathr-registry:${{ github.sha }}'
+        publish-profile: ${{ secrets.AzureAppService_PublishProfile_b5d78d27d28f4285903f7d1f2d0a3cde }}
+        images: 'xcacr.azurecr.io/${{ secrets.AzureAppService_ContainerUsername_a903568e603d4f759024fd6c84e1ffb6 }}/xcacr/xcacr/windoze/feathr-registry:${{ github.sha }}'
