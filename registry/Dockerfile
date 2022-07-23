@@ -1,7 +1,7 @@
 FROM node:16-alpine as ui-builder
 WORKDIR /usr/src
 ARG checkout=main
-RUN apk add --no-cache git && git clone https://github.com/linkedin/feathr.git && cd /usr/src/feathr/ui && git checkout $checkout && npm install && REACT_APP_API_ENDPOINT="" npm run build
+RUN apk add --no-cache git && git clone https://github.com/linkedin/feathr.git&& cd /usr/src/feathr/ui && git checkout $checkout && npm install && REACT_APP_API_ENDPOINT="" npm run build && git rev-parse --short HEAD > /usr/src/feathr/ui/build/ui-version.txt
 
 FROM messense/rust-musl-cross:x86_64-musl AS builder
 WORKDIR /usr/src/
