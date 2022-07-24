@@ -1,6 +1,7 @@
 use std::{collections::HashSet, fmt::Debug};
 
-use log::debug;
+use log::{debug, warn};
+use regex::Regex;
 use registry_provider::*;
 use tantivy::{
     collector::TopDocs,
@@ -67,6 +68,7 @@ pub struct FtsIndex {
     body_field: Field,
     name_score_field: Field,
     enabled: bool,
+    cleaner: Regex,
 }
 
 impl Debug for FtsIndex {
@@ -127,6 +129,10 @@ impl FtsIndex {
             body_field,
             name_score_field,
             enabled: true,
+            cleaner: Regex::new(
+                r"([:+\(\)\[\]\{\}])|(\s[aA][nN][dD]\s)|(\s[oO][rR]\s)|(\s[tT][oO]\s)",
+            )
+            .unwrap(),
         }
     }
 
@@ -180,21 +186,32 @@ impl FtsIndex {
         limit: usize,
         offset: usize,
     ) -> Result<Vec<Uuid>, FtsError> {
+        //
         let searcher = self.reader.searcher();
         let query_parser = QueryParser::for_index(
             &self.index,
             vec![self.name_field, self.id_field, self.body_field],
         );
+        let parsed_q: Box<dyn Query> = match query_parser.parse_query(q) {
+            Ok(q) => q,
+            Err(e) => {
+                warn!("Invalid query, error: {:?}", e);
+                // Tantivy query parser may return error
+                // @see https://github.com/quickwit-oss/tantivy/issues/5
+                // Clean all special syntax from the query string when it happens
+                query_parser.parse_query(&self.cleaner.replace_all(q, " ").to_string())?
+            }
+        };
         let query = if types.is_empty() {
             match scope {
                 Some(id) => Box::new(BooleanQuery::intersection(vec![
-                    query_parser.parse_query(q)?,
+                    parsed_q,
                     Box::new(TermQuery::new(
                         Term::from_field_text(self.scopes_field, &id),
                         IndexRecordOption::Basic,
                     )),
                 ])),
-                None => query_parser.parse_query(q)?,
+                None => parsed_q,
             }
         } else {
             let type_queries = types
@@ -208,7 +225,7 @@ impl FtsIndex {
                 .collect();
             match scope {
                 Some(id) => Box::new(BooleanQuery::intersection(vec![
-                    query_parser.parse_query(q)?,
+                    parsed_q,
                     Box::new(TermQuery::new(
                         Term::from_field_text(self.scopes_field, &id),
                         IndexRecordOption::Basic,
@@ -216,7 +233,7 @@ impl FtsIndex {
                     Box::new(BooleanQuery::union(type_queries)),
                 ])),
                 None => Box::new(BooleanQuery::intersection(vec![
-                    query_parser.parse_query(q)?,
+                    parsed_q,
                     Box::new(BooleanQuery::union(type_queries)),
                 ])),
             }
@@ -317,5 +334,16 @@ mod tests {
             assert_eq!(docs[&id].type_, "SomeType1");
             assert!(docs[&id].scopes.contains(&"scope-2".to_string()));
         }
+    }
+
+    #[test]
+    fn cleaner() {
+        let cleaner =
+            Regex::new(r"([:+\(\)\[\]\{\}])|(\s[aA][nN][dD]\s)|(\s[oO][rR]\s)|(\s[tT][oO]\s)")
+                .unwrap();
+        assert_eq!(
+            cleaner.replace_all("+([he:l)lo] OR xyz AnD 123 tO [QaQ}", ""),
+            "helloxyz123QaQ"
+        );
     }
 }

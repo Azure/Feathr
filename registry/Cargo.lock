@@ -2679,6 +2679,7 @@ dependencies = [
  "log",
  "petgraph",
  "rand 0.8.5",
+ "regex",
  "registry-provider",
  "serde",
  "serde_json",
