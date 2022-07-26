@@ -17,6 +17,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1.8"
 petgraph = { version = "0.6", features = ["default", "serde-1"] }
+regex = "1"
 tantivy = "0.18"
 tiberius = { version = "0.9", features = [
     "tds73",
