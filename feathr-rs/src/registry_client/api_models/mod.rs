@@ -82,6 +82,7 @@ impl From<SourceImpl> for SourceDef {
                 ("jdbc", options)
             }
             crate::DataLocation::Generic {
+                _type,
                 format,
                 mode,
                 mut options,

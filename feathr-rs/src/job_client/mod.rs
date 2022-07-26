@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::{
     load_var_source, DateTimeResolution, Error, MaterializationSettingsBuilder, OutputSink,
-    VarSource,
+    VarSource, GetSecretKeys, DataLocation,
 };
 
 pub use azure_synapse::AzureSynapseClient;
@@ -609,11 +609,10 @@ impl SubmitJoiningJobRequestBuilder {
     /**
      * Set output path for the Spark job
      */
-    pub fn output_location<T>(&mut self, output_path: T) -> Result<&mut Self, crate::Error>
-    where
-        T: ToString
+    pub fn output_location(&mut self, location: DataLocation) -> Result<&mut Self, crate::Error>
     {
-        self.output_path = Some(output_path.to_string());
+        self.secret_keys.extend(location.get_secret_keys());
+        self.output_path = Some(location.to_string());
         Ok(self)
     }
 
@@ -703,7 +702,9 @@ impl SubmitGenerationJobRequestBuilder {
     where
         T: Into<OutputSink>,
     {
-        self.materialization_builder.sinks.push(sink.into());
+        let sink: OutputSink = sink.into();
+        self.secret_keys.extend(sink.get_secret_keys());
+        self.materialization_builder.sinks.push(sink);
         self
     }
 
@@ -713,7 +714,11 @@ impl SubmitGenerationJobRequestBuilder {
     {
         self.materialization_builder
             .sinks
-            .extend(sinks.into_iter().map(|s| s.to_owned().into()));
+            .extend(sinks.into_iter().map(|s| {
+                let sink: OutputSink = s.to_owned().into();
+                self.secret_keys.extend(sink.get_secret_keys());
+                sink
+            }));
         self
     }
 

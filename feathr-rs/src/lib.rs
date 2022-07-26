@@ -50,6 +50,13 @@ where
     }
 }
 
+pub fn is_default<T>(t: &T) -> bool
+where
+    T: Default + PartialEq,
+{
+    t == &Default::default()
+}
+
 #[cfg(test)]
 mod tests {
     use dotenv;

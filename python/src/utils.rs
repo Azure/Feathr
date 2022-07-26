@@ -6,6 +6,7 @@ use pyo3::{
     IntoPy, PyObject, PyResult, Python,
 };
 use regex::Regex;
+use tokio::runtime::Handle;
 
 /**
  * Check CTRL-C every second, cancel the future if pressed and return Interrupted error
@@ -30,14 +31,18 @@ where
 }
 
 /**
- * Run async function in blocking fashion
+ * Run async function in blocking fashion.
+ * Use current tokio context or create a new one if not exists.
  */
 pub(crate) fn block_on<F: Future>(future: F) -> F::Output {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(future)
+    match Handle::try_current() {
+        Ok(handle) => handle.block_on(future),
+        Err(_) => tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future),
+    }
 }
 
 /**
@@ -71,7 +76,7 @@ pub(crate) fn str_to_dur(s: &str) -> PyResult<Duration> {
             "s" | "second" | "seconds" => Ok(Duration::seconds(num)),
             "m" | "minute" | "minutes" => Ok(Duration::seconds(num * 60)),
             "h" | "hour" | "hours" => Ok(Duration::seconds(num * 3600)),
-            "d" | "day" | "dasys" => Ok(Duration::seconds(num * 86400)),
+            "d" | "day" | "days" => Ok(Duration::seconds(num * 86400)),
             _ => Err(PyValueError::new_err(s.to_owned())),
         }
     } else {

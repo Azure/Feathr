@@ -36,15 +36,27 @@ impl FeathrClient {
     pub async fn load_project(&self, name: &str) -> Result<FeathrProject, Error> {
         if let Some(r) = self.inner.get_registry_client() {
             let lineage = r.load_project(name).await?;
-            let mut project: FeathrProjectImpl = lineage.try_into()?;
-            // Set owner
-            project.owner = Some(self.inner.clone());
-            Ok(FeathrProject {
-                inner: Arc::new(RwLock::new(project)),
-            })
+            self.load_project_from_lineage(lineage)
         } else {
             Err(Error::DetachedClient)
         }
+    }
+
+    pub fn load_project_from_json(&self, json: &str) -> Result<FeathrProject, Error> {
+        let lineage: api_models::EntityLineage = serde_json::from_str(json)?;
+        self.load_project_from_lineage(lineage)
+    }
+
+    pub fn load_project_from_lineage(
+        &self,
+        lineage: api_models::EntityLineage,
+    ) -> Result<FeathrProject, Error> {
+        let mut project: FeathrProjectImpl = lineage.try_into()?;
+        // Set owner
+        project.owner = Some(self.inner.clone());
+        Ok(FeathrProject {
+            inner: Arc::new(RwLock::new(project)),
+        })
     }
 
     pub async fn new_project(&self, name: &str) -> Result<FeathrProject, Error> {
@@ -261,19 +273,22 @@ mod tests {
             .unwrap();
 
         let start = Utc.ymd(2020, 5, 20).and_hms(0, 0, 0);
+        let location: DataLocation = r#"{"type":"generic", "format": "cosmos.oltp", "mode": "APPEND", "spark__cosmos__accountEndpoint": "https://xchcosmos1.documents.azure.com:443/", "spark__cosmos__accountKey": "${cosmos1_KEY}", "spark__cosmos__database": "feathr", "spark__cosmos__container": "abcde"}"#.parse().unwrap();
         let reqs = proj
             .feature_gen_job(
                 &[&f_location_avg_fare, &f_location_max_fare],
                 start,
-                start + Duration::days(3),
+                start + Duration::days(1),
                 DateTimeResolution::Daily,
             )
             .await
             .unwrap()
-            .sink(RedisSink::new("table1"))
+            // .sink(RedisSink::new("table1"))
+            .sink(location)
             .build()
             .unwrap();
         for r in reqs.iter() {
+            println!("{}:\n{}", r.job_config_file_name, r.feature_config);
             println!("{}:\n{}", r.job_config_file_name, r.gen_job_config);
         }
 
@@ -461,7 +476,7 @@ mod tests {
             .await
             .unwrap()
             .python_file("test-script/testudf.py")
-            .output_location(&output)
+            .output_location(output.parse().unwrap())
             .unwrap()
             .build();
 
@@ -530,7 +545,7 @@ mod tests {
             .await
             .unwrap()
             .python_file("test-script/testudf.py")
-            .output_location(&output)
+            .output_location(output.parse().unwrap())
             .unwrap()
             .build();
 
@@ -553,5 +568,12 @@ mod tests {
         );
 
         assert_eq!(client.get_job_status(id).await.unwrap(), JobStatus::Success);
+    }
+
+    #[test]
+    fn test_config() {
+        let loc: DataLocation = r#"{"type":"generic", "format": "cosmos.oltp", "mode": "APPEND", "spark__cosmos__accountEndpoint": "https://xchcosmos1.documents.azure.com:443/", "spark__cosmos__accountKey": "${cosmos1_KEY}", "spark__cosmos__database": "feathr", "spark__cosmos__container": "abcde"}"#.parse().unwrap();
+        let sink = GenericSink::new(loc);
+        println!("{}", serde_json::to_string_pretty(&sink).unwrap());
     }
 }

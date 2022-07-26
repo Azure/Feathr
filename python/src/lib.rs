@@ -760,6 +760,66 @@ impl RedisSink {
 
 #[pyclass]
 #[derive(Clone, Debug)]
+pub struct CosmosDbSink(feathr::GenericSink);
+
+#[pymethods]
+impl CosmosDbSink {
+    #[new]
+    #[args(streaming = "false", streaming_timeout = "None")]
+    fn new(
+        name: &str,
+        endpoint: &str,
+        database: &str,
+        collection: &str,
+        streaming: bool,
+        streaming_timeout: Option<i64>,
+    ) -> Self {
+        let mut options: HashMap<String, String> = HashMap::new();
+        options.insert(
+            "spark__cosmos__accountEndpoint".to_string(),
+            endpoint.to_string(),
+        );
+        options.insert("spark__cosmos__database".to_string(), database.to_string());
+        options.insert(
+            "spark__cosmos__container".to_string(),
+            collection.to_string(),
+        );
+        options.insert(
+            "spark__cosmos__accountKey".to_string(),
+            format!("${{{}_KEY}}", name),
+        );
+        let location = feathr::DataLocation::Generic {
+            _type: "generic".to_string(),
+            format: "cosmos.oltp".to_string(),
+            mode: Some("APPEND".to_string()),
+            options,
+        };
+        Self(feathr::GenericSink {
+            location,
+            streaming,
+            streaming_timeout: streaming_timeout.map(|i| Duration::seconds(i)),
+        })
+    }
+
+    #[getter]
+    fn get_location(&self) -> DataLocation {
+        DataLocation(self.0.location.clone())
+    }
+
+    fn __repr__(&self) -> String {
+        format!("{:#?}", &self)
+    }
+
+    #[getter]
+    fn __dict__<'p>(&self, py: Python<'p>) -> PyResult<PyObject> {
+        let map: serde_json::Value = serde_json::to_value(&self.0)
+            .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
+        Ok(value_to_py(map, py))
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Debug)]
 struct ObservationSettings(feathr::ObservationSettings);
 
 #[pymethods]
@@ -1175,8 +1235,16 @@ impl FeathrProject {
     }
 
     #[getter]
-    pub fn get_sources(&self) -> PyResult<Vec<String>> {
-        block_on(async { Ok(self.0.get_sources().await) })
+    pub fn get_sources(&self) -> PyResult<HashMap<String, Source>> {
+        block_on(async {
+            let names = self.0.get_sources().await;
+            let mut ret = HashMap::new();
+            for name in names {
+                let source = self.0.get_source(&name).await.unwrap();
+                ret.insert(name, Source(source));
+            }
+            Ok(ret)
+        })
     }
 
     pub fn get_source(&self, name: &str) -> PyResult<Source> {
@@ -1191,8 +1259,16 @@ impl FeathrProject {
     }
 
     #[getter]
-    pub fn get_anchor_groups(&self) -> PyResult<Vec<String>> {
-        block_on(async { Ok(self.0.get_anchor_groups().await) })
+    pub fn get_anchor_groups(&self) -> PyResult<HashMap<String, AnchorGroup>> {
+        block_on(async {
+            let names = self.0.get_anchor_groups().await;
+            let mut ret = HashMap::new();
+            for name in names {
+                let group = self.0.get_anchor_group(&name).await.unwrap();
+                ret.insert(name, AnchorGroup(group));
+            }
+            Ok(ret)
+        })
     }
 
     #[getter]
@@ -1201,8 +1277,16 @@ impl FeathrProject {
     }
 
     #[getter]
-    pub fn get_derived_features(&self) -> PyResult<Vec<String>> {
-        block_on(async { Ok(self.0.get_derived_features().await) })
+    pub fn get_derived_features(&self) -> PyResult<HashMap<String, DerivedFeature>> {
+        block_on(async {
+            let names = self.0.get_derived_features().await;
+            let mut ret = HashMap::new();
+            for name in names {
+                let feature = self.0.get_derived_feature(&name).await.unwrap();
+                ret.insert(name, DerivedFeature(feature));
+            }
+            Ok(ret)
+        })
     }
 
     pub fn get_anchor_group(&self, name: &str) -> PyResult<AnchorGroup> {
@@ -1474,11 +1558,11 @@ impl FeathrProject {
         }
         let queries: Vec<&feathr::FeatureQuery> = queries.iter().map(|q| q).collect();
 
-        let output = if let Ok(s) = output.extract::<String>() {
-            s
-        } else if let Ok(f) = output.extract::<DataLocation>() {
-            f.0.to_argument()
+        let output: feathr::DataLocation = if let Ok(s) = output.extract::<String>() {
+            s.parse()
                 .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+        } else if let Ok(f) = output.extract::<DataLocation>() {
+            f.0
         } else {
             return Err(PyValueError::new_err(format!(
                 "output must be string or DataLocation object"
@@ -1488,10 +1572,16 @@ impl FeathrProject {
         block_on(async {
             let request = self
                 .0
-                .feature_join_job(observation, &queries, &output)
+                .feature_join_job(
+                    observation,
+                    &queries,
+                    output
+                        .to_argument()
+                        .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?,
+                )
                 .await
                 .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?
-                .output_location(&output)
+                .output_location(output)
                 .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
                 .build();
             let client = self.1 .0.clone();
@@ -1528,11 +1618,11 @@ impl FeathrProject {
         let queries: Vec<feathr::FeatureQuery> = queries.iter().map(|q| q.to_owned()).collect();
         let project = self.0.clone();
         let client = self.1 .0.clone();
-        let output = if let Ok(s) = output.extract::<String>() {
-            s
-        } else if let Ok(f) = output.extract::<DataLocation>() {
-            f.0.to_argument()
+        let output: feathr::DataLocation = if let Ok(s) = output.extract::<String>() {
+            s.parse()
                 .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
+        } else if let Ok(f) = output.extract::<DataLocation>() {
+            f.0
         } else {
             return Err(PyValueError::new_err(format!(
                 "output must be string or DataLocation object"
@@ -1542,10 +1632,16 @@ impl FeathrProject {
         pyo3_asyncio::tokio::future_into_py(py, async move {
             let queries: Vec<&feathr::FeatureQuery> = queries.iter().map(|q| q).collect();
             let request = project
-                .feature_join_job(observation, &queries, &output)
+                .feature_join_job(
+                    observation,
+                    &queries,
+                    output
+                        .to_argument()
+                        .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?,
+                )
                 .await
                 .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))?
-                .output_location(&output)
+                .output_location(output)
                 .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?
                 .build();
             Ok(client
@@ -1556,14 +1652,14 @@ impl FeathrProject {
         })
     }
 
-    #[args(step = "DateTimeResolution::Daily", sink = "None")]
+    #[args(step = "DateTimeResolution::Daily")]
     fn materialize_features(
         &self,
         features: &PyList,
         start: &PyDateTime,
         end: &PyDateTime,
         step: DateTimeResolution,
-        sink: Option<RedisSink>,
+        sink: &PyAny,
     ) -> PyResult<Vec<u64>> {
         let mut feature_names: Vec<String> = vec![];
         for f in features.into_iter() {
@@ -1594,7 +1690,31 @@ impl FeathrProject {
                 end.get_minute() as u32,
                 end.get_second() as u32,
             );
-        let sink = sink.map(|s| feathr::OutputSink::Redis(s.0));
+        let sink: Vec<feathr::OutputSink> = if sink.is_none() {
+            vec![]
+        } else if let Ok(sink) = sink.extract::<RedisSink>() {
+            vec![feathr::OutputSink::Redis(sink.0)]
+        } else if let Ok(sink) = sink.extract::<CosmosDbSink>() {
+            vec![feathr::OutputSink::Hdfs(sink.0)]
+        } else if let Ok(sink) = sink.extract::<Vec<&PyAny>>() {
+            let mut sinks: Vec<feathr::OutputSink> = vec![];
+            for s in sink.into_iter() {
+                if let Ok(sink) = s.extract::<RedisSink>() {
+                    sinks.push(feathr::OutputSink::Redis(sink.0));
+                } else if let Ok(sink) = s.extract::<CosmosDbSink>() {
+                    sinks.push(feathr::OutputSink::Hdfs(sink.0));
+                } else {
+                    return Err(PyValueError::new_err(format!(
+                        "sink must be RedisSink or CosmosDbSink"
+                    )));
+                }
+            }
+            sinks
+        } else {
+            return Err(PyTypeError::new_err(format!(
+                "sink must be None or RedisSink or CosmosDbSink"
+            )));
+        };
 
         block_on(async {
             let mut builder = self
@@ -1602,9 +1722,7 @@ impl FeathrProject {
                 .feature_gen_job(&feature_names, start, end, step.into())
                 .await
                 .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
-            if let Some(sink) = sink {
-                builder.sink(sink);
-            }
+            builder.sinks(&sink);
 
             let request = builder
                 .build()
@@ -1621,14 +1739,14 @@ impl FeathrProject {
         })
     }
 
-    #[args(step = "DateTimeResolution::Daily", sink = "None")]
+    #[args(step = "DateTimeResolution::Daily")]
     fn materialize_features_async<'p>(
         &'p self,
         features: &PyList,
         start: &PyDateTime,
         end: &PyDateTime,
         step: DateTimeResolution,
-        sink: Option<RedisSink>,
+        sink: &PyAny,
         py: Python<'p>,
     ) -> PyResult<&'p PyAny> {
         let mut feature_names: Vec<String> = vec![];
@@ -1661,16 +1779,38 @@ impl FeathrProject {
             );
         let client = self.1 .0.clone();
         let project = self.0.clone();
+        let sink: Vec<feathr::OutputSink> = if sink.is_none() {
+            vec![]
+        } else if let Ok(sink) = sink.extract::<RedisSink>() {
+            vec![feathr::OutputSink::Redis(sink.0)]
+        } else if let Ok(sink) = sink.extract::<CosmosDbSink>() {
+            vec![feathr::OutputSink::Hdfs(sink.0)]
+        } else if let Ok(sink) = sink.extract::<Vec<&PyAny>>() {
+            let mut sinks: Vec<feathr::OutputSink> = vec![];
+            for s in sink.into_iter() {
+                if let Ok(sink) = s.extract::<RedisSink>() {
+                    sinks.push(feathr::OutputSink::Redis(sink.0));
+                } else if let Ok(sink) = s.extract::<CosmosDbSink>() {
+                    sinks.push(feathr::OutputSink::Hdfs(sink.0));
+                } else {
+                    return Err(PyValueError::new_err(format!(
+                        "sink must be RedisSink or CosmosDbSink"
+                    )));
+                }
+            }
+            sinks
+        } else {
+            return Err(PyTypeError::new_err(format!(
+                "sink must be None or RedisSink or CosmosDbSink"
+            )));
+        };
 
         pyo3_asyncio::tokio::future_into_py(py, async move {
-            let sink = sink.map(|s| feathr::OutputSink::Redis(s.0));
             let mut builder = project
                 .feature_gen_job(&feature_names, start, end, step.into())
                 .await
                 .map_err(|e| PyValueError::new_err(format!("{:#?}", e)))?;
-            if let Some(sink) = sink {
-                builder.sink(sink);
-            }
+            builder.sinks(&sink);
 
             let request = builder
                 .build()
@@ -1914,6 +2054,7 @@ fn feathrs(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<ObservationSettings>()?;
     m.add_class::<DateTimeResolution>()?;
     m.add_class::<RedisSink>()?;
+    m.add_class::<CosmosDbSink>()?;
     m.add_class::<JobStatus>()?;
     m.add_class::<FeathrProject>()?;
     m.add_class::<FeathrClient>()?;

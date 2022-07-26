@@ -219,6 +219,7 @@ impl TryInto<crate::source::SourceImpl> for (Uuid, u64, SourceAttributes) {
                     version: self.1,
                     name: self.2.name,
                     location: crate::DataLocation::Generic {
+                        _type: "generic".to_string(),
                         format: self
                             .2
                             .options

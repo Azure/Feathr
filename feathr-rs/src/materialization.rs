@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 
-use crate::{Error, DataLocation, GetSecretKeys};
+use crate::{DataLocation, Error, GetSecretKeys};
 
 const END_TIME_FORMAT: &str = "yyyy-MM-dd HH:mm:ss";
 
@@ -48,9 +48,45 @@ impl RedisSink {
     pub fn with_timeout(table_name: &str, timeout: Duration) -> Self {
         Self {
             table_name: table_name.to_string(),
-            streaming: false,
+            streaming: true,
             streaming_timeout: Some(timeout),
         }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct GenericSink {
+    #[serde(flatten)]
+    pub location: DataLocation,
+    #[serde(skip_serializing_if = "crate::is_default")]
+    pub streaming: bool,
+    #[serde(
+        rename = "timeoutMs",
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_timeout"
+    )]
+    pub streaming_timeout: Option<Duration>,
+}
+
+impl GenericSink {
+    pub fn new(location: DataLocation) -> Self {
+        Self {
+            location,
+            streaming: false,
+            streaming_timeout: None,
+        }
+    }
+
+    pub fn with_timeout(location: DataLocation, timeout: Duration) -> Self {
+        Self {
+            location,
+            streaming: true,
+            streaming_timeout: Some(timeout),
+        }
+    }
+
+    pub fn get_secret_keys(&self) -> Vec<String> {
+        self.location.get_secret_keys()
     }
 }
 
@@ -58,7 +94,7 @@ impl RedisSink {
 #[serde(tag = "name", content = "params", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum OutputSink {
     Redis(RedisSink),
-    Hdfs(DataLocation),
+    Hdfs(GenericSink),
 }
 
 impl GetSecretKeys for OutputSink {
@@ -89,14 +125,14 @@ impl From<&RedisSink> for OutputSink {
 }
 
 impl From<DataLocation> for OutputSink {
-    fn from(s: DataLocation) -> Self {
-        Self::Hdfs(s)
+    fn from(location: DataLocation) -> Self {
+        Self::Hdfs(GenericSink::new(location))
     }
 }
 
 impl From<&DataLocation> for OutputSink {
-    fn from(s: &DataLocation) -> Self {
-        Self::Hdfs(s.to_owned())
+    fn from(location: &DataLocation) -> Self {
+        Self::Hdfs(GenericSink::new(location.to_owned()))
     }
 }
 
@@ -218,20 +254,34 @@ mod tests {
         });
 
         println!("{}", serde_json::to_string_pretty(&rs).unwrap());
+
+        let cs = OutputSink::Hdfs(GenericSink::new(DataLocation::Generic {
+            _type: "generic".to_string(),
+            format: "cosmos.oltp".to_string(),
+            mode: Some("APPEND".to_string()),
+            options: vec![
+                ("key1".to_string(), "value1".to_string()),
+                ("key2".to_string(), "value2".to_string()),
+            ].into_iter().collect(),
+        }));
+        println!("{}", serde_json::to_string_pretty(&cs).unwrap());
     }
 
     #[test]
     fn test_build() {
         let now = Utc::now();
-        let b = MaterializationSettingsBuilder::new("some_name", &[
-            "abc".to_string(),
-            "def".to_string(),
-            "foo".to_string(),
-            "bar".to_string(),
-        ])
-            .sink(RedisSink::new("table1"))
-            .build(now - Duration::hours(3), now, DateTimeResolution::Hourly)
-            .unwrap();
+        let b = MaterializationSettingsBuilder::new(
+            "some_name",
+            &[
+                "abc".to_string(),
+                "def".to_string(),
+                "foo".to_string(),
+                "bar".to_string(),
+            ],
+        )
+        .sink(RedisSink::new("table1"))
+        .build(now - Duration::hours(3), now, DateTimeResolution::Hourly)
+        .unwrap();
         println!("{}", serde_json::to_string_pretty(&b).unwrap());
         assert_eq!(b.len(), 3);
         assert_eq!(b[1].operational.name, b[0].operational.name);

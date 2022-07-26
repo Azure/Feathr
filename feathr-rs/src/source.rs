@@ -6,7 +6,8 @@ use uuid::Uuid;
 
 use crate::{
     project::{FeathrProjectImpl, FeathrProjectModifier},
-    Error, utils::parse_secret, GetSecretKeys,
+    utils::parse_secret,
+    Error, GetSecretKeys,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -24,21 +25,18 @@ impl Serialize for JdbcAuth {
     {
         match &self {
             JdbcAuth::Anonymous => {
-                let mut state = serializer.serialize_struct("JdbcAuth", 2)?;
-                state.serialize_field("type", "jdbc")?;
+                let mut state = serializer.serialize_struct("JdbcAuth", 1)?;
                 state.serialize_field("anonymous", &true)?;
                 state.end()
             }
             JdbcAuth::Userpass { user, password } => {
-                let mut state = serializer.serialize_struct("JdbcAuth", 3)?;
-                state.serialize_field("type", "jdbc")?;
+                let mut state = serializer.serialize_struct("JdbcAuth", 2)?;
                 state.serialize_field("user", user)?;
                 state.serialize_field("password", password)?;
                 state.end()
             }
             JdbcAuth::Token { token } => {
-                let mut state = serializer.serialize_struct("JdbcAuth", 4)?;
-                state.serialize_field("type", "jdbc")?;
+                let mut state = serializer.serialize_struct("JdbcAuth", 2)?;
                 state.serialize_field("token", token)?;
                 state.serialize_field("useToken", &true)?;
                 state.end()
@@ -55,7 +53,7 @@ pub struct KafkaSchema {
     avro_json: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
 #[serde(rename_all = "camelCase")]
 pub enum DataLocation {
@@ -77,6 +75,8 @@ pub enum DataLocation {
         schema: KafkaSchema,
     },
     Generic {
+        #[serde(rename = "type", default, skip_serializing)]
+        _type: String,
         format: String,
         #[serde(skip_serializing_if = "Option::is_none", default)]
         mode: Option<String>,
@@ -84,6 +84,99 @@ pub enum DataLocation {
         options: HashMap<String, String>,
     },
     InputContext,
+}
+
+impl Serialize for DataLocation {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match &self {
+            DataLocation::Hdfs { path } => {
+                let mut state = serializer.serialize_struct("DataLocation", 1)?;
+                state.serialize_field("path", path)?;
+                state.end()
+            }
+            DataLocation::Jdbc {
+                url,
+                dbtable,
+                query,
+                auth,
+            } => {
+                let len = 4
+                    + if matches!(auth, JdbcAuth::Anonymous) {
+                        1
+                    } else {
+                        2
+                    };
+                let mut state = serializer.serialize_struct("DataLocation", len)?;
+                state.serialize_field("type", "jdbc")?;
+                state.serialize_field("url", url)?;
+                match dbtable {
+                    Some(dbtable) => state.serialize_field("dbtable", dbtable)?,
+                    None => state.skip_field("dbtable")?,
+                }
+                match query {
+                    Some(query) => state.serialize_field("query", query)?,
+                    None => state.skip_field("query")?,
+                }
+                match auth {
+                    JdbcAuth::Userpass { user, password } => {
+                        state.serialize_field("user", user)?;
+                        state.serialize_field("password", password)?;
+                    }
+                    JdbcAuth::Token { token } => {
+                        state.serialize_field("token", token)?;
+                        state.serialize_field("useToken", &true)?;
+                    }
+                    JdbcAuth::Anonymous => {
+                        state.serialize_field("anonymous", &true)?;
+                    }
+                }
+                state.end()
+            }
+            DataLocation::Kafka {
+                brokers,
+                topics,
+                schema,
+            } => {
+                let mut state = serializer.serialize_struct("DataLocation", 4)?;
+                state.serialize_field("type", "kafka")?;
+                state.serialize_field("brokers", brokers)?;
+                state.serialize_field("topics", topics)?;
+                state.serialize_field("schema", schema)?;
+                state.end()
+            }
+            DataLocation::Generic {
+                _type,
+                format,
+                mode,
+                options,
+            } => {
+                #[derive(Serialize)]
+                struct DataLocation<'a> {
+                    #[serde(rename = "type")]
+                    _type: &'static str,
+                    format: &'a String,
+                    mode: &'a Option<String>,
+                    #[serde(flatten)]
+                    options: &'a HashMap<String, String>,
+                }
+                let wrapper = DataLocation {
+                    _type: "generic",
+                    format,
+                    mode,
+                    options,
+                };
+                wrapper.serialize(serializer)
+            }
+            DataLocation::InputContext => {
+                let mut state = serializer.serialize_struct("DataLocation", 1)?;
+                state.serialize_field("type", "PASSTHROUGH")?;
+                state.end()
+            }
+        }
+    }
 }
 
 impl FromStr for DataLocation {
@@ -636,6 +729,7 @@ impl GenericSourceBuilder {
             version: 1,
             name: self.name.to_string(),
             location: DataLocation::Generic {
+                _type: "generic".to_string(),
                 format: self.format.clone(),
                 mode: self.mode.clone(),
                 options: self.options.clone(),
@@ -674,10 +768,11 @@ mod tests {
         );
         assert_eq!(loc.to_argument().unwrap(), "s3://bucket/key");
 
-        let loc: DataLocation = r#"{"format": "cosmos.oltp", "mode": "APPEND", "spark__cosmos__accountEndpoint": "https://xchcosmos1.documents.azure.com:443/", "spark__cosmos__accountKey": "${cosmos1_KEY}", "spark__cosmos__database": "feathr", "spark__cosmos__container": "abcde"}"#.parse().unwrap();
+        let loc: DataLocation = r#"{"type":"generic", "format": "cosmos.oltp", "mode": "APPEND", "spark__cosmos__accountEndpoint": "https://xchcosmos1.documents.azure.com:443/", "spark__cosmos__accountKey": "${cosmos1_KEY}", "spark__cosmos__database": "feathr", "spark__cosmos__container": "abcde"}"#.parse().unwrap();
         assert_eq!(
             loc,
             DataLocation::Generic {
+                _type: "generic".to_string(),
                 format: "cosmos.oltp".to_string(),
                 mode: Some("APPEND".to_string()),
                 options: {
