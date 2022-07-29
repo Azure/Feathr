@@ -16,6 +16,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::fts::{FtsError, FtsIndex};
+use crate::rbac_map::RbacMap;
 
 const NODE_CAPACITY: usize = 1000;
 
@@ -80,6 +81,16 @@ where
         edge_type: EdgeType,
         edge_id: Uuid,
     ) -> Result<(), RegistryError>;
+
+    async fn grant_permission(
+        &mut self,
+        grant: &RbacRecord,
+    ) -> Result<(), RegistryError>;
+
+    async fn revoke_permission(
+        &mut self,
+        revoke: &RbacRecord,
+    ) -> Result<(), RegistryError>;
 }
 
 #[derive(Debug)]
@@ -105,6 +116,8 @@ where
     // FTS support
     pub(crate) fts_index: FtsIndex,
 
+    pub(crate) permission_map: RbacMap,
+
     // TODO:
     pub external_storage: Vec<Arc<RwLock<dyn ExternalStorage<EntityProp>>>>,
 }
@@ -121,6 +134,7 @@ where
             deleted: Default::default(),
             entry_points: Default::default(),
             fts_index: Default::default(),
+            permission_map: Default::default(),
             external_storage: Default::default(),
         }
     }
@@ -142,6 +156,7 @@ where
     pub fn from_content(
         graph: Graph<Entity<EntityProp>, Edge, Directed>,
         deleted: HashSet<Uuid>,
+        permissions: Vec<RbacRecord>,
     ) -> Self {
         let fts_index = FtsIndex::new();
         let node_id_map = graph
@@ -171,6 +186,7 @@ where
             deleted,
             entry_points,
             fts_index,
+            permission_map: Default::default(),
             external_storage: Default::default(),
         };
         let ids: Vec<_> = ret.node_id_map.keys().copied().collect();
@@ -180,6 +196,7 @@ where
         });
         ret.fts_index.commit().ok();
 
+        ret.load_permissions(permissions.into_iter()).ok();
         ret
     }
 }
@@ -197,6 +214,7 @@ where
             deleted: Default::default(),
             entry_points: Default::default(),
             fts_index: FtsIndex::new(),
+            permission_map: Default::default(),
             external_storage: Default::default(),
         }
     }
@@ -257,10 +275,15 @@ where
         Ok(())
     }
 
-    pub(crate) async fn load<NI, EI>(entities: NI, edges: EI) -> Result<Self, RegistryError>
+    pub(crate) async fn load<NI, EI, RI>(
+        entities: NI,
+        edges: EI,
+        permissions: RI,
+    ) -> Result<Self, RegistryError>
     where
         NI: Iterator<Item = Entity<EntityProp>>,
         EI: Iterator<Item = Edge>,
+        RI: Iterator<Item = RbacRecord>,
     {
         let mut ret = Self {
             graph: Graph::with_capacity(NODE_CAPACITY * 10, NODE_CAPACITY),
@@ -269,9 +292,11 @@ where
             deleted: HashSet::with_capacity(NODE_CAPACITY),
             entry_points: Vec::with_capacity(NODE_CAPACITY),
             fts_index: FtsIndex::new(),
+            permission_map: Default::default(),
             external_storage: Default::default(),
         };
         ret.batch_load(entities, edges).await?;
+        ret.load_permissions(permissions)?;
 
         Ok(ret)
     }
@@ -864,6 +889,20 @@ mod tests {
                 "Deleting edge: '{}' '{:?}' '{}'",
                 from.name, edge_type, to.name
             );
+            Ok(())
+        }
+
+        async fn grant_permission(
+            &mut self,
+            _grant: &RbacRecord,
+        ) -> Result<(), RegistryError> {
+            Ok(())
+        }
+
+        async fn revoke_permission(
+            &mut self,
+            _revoke: &RbacRecord,
+        ) -> Result<(), RegistryError> {
             Ok(())
         }
     }

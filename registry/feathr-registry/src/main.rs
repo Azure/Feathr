@@ -20,7 +20,7 @@ use poem::{
 use poem_openapi::OpenApiService;
 use raft_registry::{
     management_routes, raft_routes, FeathrApiV1, FeathrApiV2, NodeConfig, RaftRegistryApp,
-    RaftSequencer,
+    RaftSequencer, RbacMiddleware,
 };
 use sql_provider::attach_storage;
 
@@ -176,7 +176,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .nest("/v2", api_service_v2)
         .with(Tracing)
         .with(RaftSequencer::new(app.store.clone()))
-        .with(Cors::new());
+        .with(Cors::new())
+        .with(RbacMiddleware);
 
     let docs_route = Route::new().nest("/v1", ui_v1).nest("/v2", ui_v2);
 

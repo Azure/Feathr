@@ -1,17 +1,19 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use common_utils::{set, Blank};
 use log::debug;
 use registry_provider::{
-    Edge, EdgeType, EntityProperty, EntityType, RegistryError, RegistryProvider,
+    Credential, Edge, EdgeType, EntityProperty, EntityType, Permission, RbacProvider, RbacRecord,
+    RegistryError, RegistryProvider,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    AnchorDef, AnchorFeatureDef, ApiError, DerivedFeatureDef, Entities, Entity, EntityAttributes,
-    EntityLineage, EntityRef, IntoApiResult, ProjectDef, SourceDef,
+    into_user_roles, AnchorDef, AnchorFeatureDef, ApiError, DerivedFeatureDef, Entities, Entity,
+    EntityAttributes, EntityLineage, EntityRef, IntoApiResult, ProjectDef, RbacResponse, SourceDef,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -142,9 +144,27 @@ pub enum FeathrApiRequest {
     GetEntityProject {
         id_or_name: String,
     },
+    // Raft specific
     BatchLoad {
         entities: Vec<registry_provider::Entity<EntityProperty>>,
         edges: Vec<Edge>,
+        permissions: Vec<RbacRecord>,
+    },
+    // RBAC
+    GetUserRoles,
+    AddUserRole {
+        project_id_or_name: String,
+        user: Credential,
+        role: Permission,
+        requestor: Credential,
+        reason: String,
+    },
+    DeleteUserRole {
+        project_id_or_name: String,
+        user: Credential,
+        role: Permission,
+        requestor: Credential,
+        reason: String,
     },
 }
 
@@ -158,6 +178,8 @@ impl FeathrApiRequest {
                 | Self::CreateAnchorFeature { .. }
                 | Self::CreateProjectDerivedFeature { .. }
                 | Self::BatchLoad { .. }
+                | Self::AddUserRole { .. }
+                | Self::DeleteUserRole { .. }
         )
     }
 }
@@ -172,6 +194,7 @@ pub enum FeathrApiResponse {
     Entity(Entity),
     Entities(Entities),
     EntityLineage(EntityLineage),
+    UserRoles(Vec<RbacResponse>),
 }
 
 impl FeathrApiResponse {
@@ -210,6 +233,14 @@ impl FeathrApiResponse {
         match self {
             FeathrApiResponse::Error(e) => Err(e.into()),
             FeathrApiResponse::EntityLineage(v) => Ok(v),
+            _ => panic!("Shouldn't reach here"),
+        }
+    }
+
+    pub fn into_user_roles(self) -> poem::Result<Vec<RbacResponse>> {
+        match self {
+            FeathrApiResponse::Error(e) => Err(e.into()),
+            FeathrApiResponse::UserRoles(v) => Ok(v),
             _ => panic!("Shouldn't reach here"),
         }
     }
@@ -281,6 +312,12 @@ impl From<EntityLineage> for FeathrApiResponse {
     }
 }
 
+impl From<Vec<RbacRecord>> for FeathrApiResponse {
+    fn from(v: Vec<RbacRecord>) -> Self {
+        Self::UserRoles(into_user_roles(v))
+    }
+}
+
 impl<T, E> From<Result<T, E>> for FeathrApiResponse
 where
     FeathrApiResponse: From<T> + From<E>,
@@ -301,7 +338,7 @@ pub trait FeathrApiProvider: Sync + Send {
 #[async_trait]
 impl<T> FeathrApiProvider for T
 where
-    T: RegistryProvider<EntityProperty> + Sync + Send,
+    T: RegistryProvider<EntityProperty> + RbacProvider + Sync + Send,
 {
     async fn request(&mut self, request: FeathrApiRequest) -> FeathrApiResponse {
         fn get_id<T>(t: &T, id_or_name: String) -> Result<Uuid, RegistryError>
@@ -496,7 +533,7 @@ where
             request: FeathrApiRequest,
         ) -> Result<FeathrApiResponse, ApiError>
         where
-            T: RegistryProvider<EntityProperty>,
+            T: RegistryProvider<EntityProperty> + RbacProvider,
         {
             Ok(match request {
                 FeathrApiRequest::GetProjects {
@@ -838,9 +875,11 @@ where
                     )
                         .into()
                 }
-                FeathrApiRequest::BatchLoad { entities, edges } => {
-                    this.load_data(entities, edges).await.into()
-                }
+                FeathrApiRequest::BatchLoad {
+                    entities,
+                    edges,
+                    permissions,
+                } => this.load_data(entities, edges, permissions).await.into(),
                 FeathrApiRequest::GetEntityProject { id_or_name } => {
                     let entity = this.get_entity_by_id_or_qualified_name(&id_or_name)?;
                     if entity.entity_type == EntityType::Project {
@@ -858,6 +897,44 @@ where
                             )))?
                             .into()
                     }
+                }
+                FeathrApiRequest::GetUserRoles => this
+                    .get_permissions()
+                    .map_api_error()?
+                    .into(),
+                FeathrApiRequest::AddUserRole {
+                    project_id_or_name,
+                    user,
+                    role,
+                    requestor,
+                    reason,
+                } => {
+                    let grant = RbacRecord{
+                        credential: user,
+                        resource: project_id_or_name.parse()?,
+                        permission: role,
+                        requestor,
+                        reason,
+                        time: Utc::now(),
+                    };
+                    this.grant_permission(&grant).await.into()
+                }
+                FeathrApiRequest::DeleteUserRole {
+                    project_id_or_name,
+                    user,
+                    role,
+                    requestor,
+                    reason,
+                } => {
+                    let revoke = RbacRecord{
+                        credential: user,
+                        resource: project_id_or_name.parse()?,
+                        permission: role,
+                        requestor,
+                        reason,
+                        time: Utc::now(),
+                    };
+                    this.revoke_permission(&revoke).await.into()
                 }
             })
         }

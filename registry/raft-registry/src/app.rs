@@ -1,30 +1,26 @@
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::sync::Arc;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
-use log::debug;
-use log::trace;
-use openraft::error::CheckIsLeaderError;
-use openraft::error::InitializeError;
-use openraft::raft::ClientWriteRequest;
-use openraft::Config;
-use openraft::EntryPayload;
-use openraft::Node;
-use openraft::Raft;
-use registry_api::ApiError;
-use registry_api::FeathrApiProvider;
-use registry_api::FeathrApiRequest;
-use registry_api::FeathrApiResponse;
+use log::{debug, trace};
+use openraft::{
+    error::{CheckIsLeaderError, InitializeError},
+    raft::ClientWriteRequest,
+    Config, EntryPayload, Node, Raft,
+};
+use poem::error::Forbidden;
+use registry_api::{
+    ApiError, FeathrApiProvider, FeathrApiRequest, FeathrApiResponse, IntoApiResult,
+};
+use registry_provider::{Credential, Permission, RbacError, RbacProvider};
 use sql_provider::load_content;
 use tokio::net::ToSocketAddrs;
 
-use crate::ManagementCode;
-use crate::RegistryClient;
-use crate::RegistryNetwork;
-use crate::RegistryNodeId;
-use crate::RegistryRaft;
-use crate::RegistryStore;
-use crate::Restore;
+use crate::{
+    ManagementCode, RegistryClient, RegistryNetwork, RegistryNodeId, RegistryRaft, RegistryStore,
+    Restore,
+};
 
 // Representation of an application state. This struct can be shared around to share
 // instances of raft, store and more.
@@ -73,6 +69,37 @@ impl RaftRegistryApp {
         }
     }
 
+    pub async fn check_permission(
+        &self,
+        credential: &Credential,
+        resource: Option<&str>,
+        permission: Permission,
+    ) -> poem::Result<()> {
+        let resource = match resource {
+            Some(s) => s.parse().map_api_error()?,
+            None => {
+                // Read/write project list works as long as there is an identity
+                return Ok(());
+            }
+        };
+        if !self
+            .store
+            .state_machine
+            .read()
+            .await
+            .registry
+            .check_permission(credential, &resource, permission)
+            .map_api_error()?
+        {
+            return Err(Forbidden(RbacError::PermissionDenied(
+                credential.to_string(),
+                resource,
+                permission,
+            )));
+        }
+        Ok(())
+    }
+
     pub async fn check_code(&self, code: Option<ManagementCode>) -> poem::Result<()> {
         trace!("Checking code {:?}", code);
         match self.store.get_management_code() {
@@ -103,9 +130,16 @@ impl RaftRegistryApp {
     }
 
     pub async fn load_data(&self) -> anyhow::Result<()> {
-        let (entities, edges) = load_content().await?;
+        let (entities, edges, permission_map) = load_content().await?;
         match self
-            .request(None, FeathrApiRequest::BatchLoad { entities, edges })
+            .request(
+                None,
+                FeathrApiRequest::BatchLoad {
+                    entities,
+                    edges,
+                    permissions: permission_map,
+                },
+            )
             .await
         {
             FeathrApiResponse::Error(e) => Err(e)?,
@@ -204,12 +238,8 @@ impl RaftRegistryApp {
                         );
                         // Remove stale old instance of this node
                         if let Ok(m) = client.metrics().await {
-                            let mut nodes: BTreeSet<RegistryNodeId> = m
-                                .membership_config
-                                .get_nodes()
-                                .keys()
-                                .copied()
-                                .collect();
+                            let mut nodes: BTreeSet<RegistryNodeId> =
+                                m.membership_config.get_nodes().keys().copied().collect();
                             debug!("Found nodes: {:?}", nodes);
                             if nodes.contains(&self.id) {
                                 debug!("Node with id {} exists in the cluster, clean up stale instance", self.id);

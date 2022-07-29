@@ -8,6 +8,7 @@ mod store;
 mod network;
 mod app;
 mod client;
+mod rbac_middleware;
 
 pub type RegistryNodeId = u64;
 
@@ -32,3 +33,4 @@ pub use store::*;
 pub use network::*;
 pub use app::*;
 pub use client::RegistryClient;
+pub use rbac_middleware::RbacMiddleware;

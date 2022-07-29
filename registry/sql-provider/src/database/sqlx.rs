@@ -1,15 +1,23 @@
 use std::{str::FromStr, sync::Arc};
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use log::debug;
 use sqlx::{
     any::AnyKind, pool::PoolConnection, Any, AnyConnection, AnyPool, ConnectOptions, Connection,
-    Executor,
+    Executor, FromRow,
 };
 
-use crate::{database::get_entity_table, db_registry::ExternalStorage, Registry};
+use crate::{
+    database::{get_entity_table, get_rbac_table},
+    db_registry::ExternalStorage,
+    Registry,
+};
 use common_utils::Logged;
-use registry_provider::{Edge, EdgeType, Entity, EntityProperty, RegistryError};
+use registry_provider::{
+    Credential, Edge, EdgeType, Entity, EntityProperty, Permission, RbacRecord, RegistryError,
+    Resource,
+};
 use tokio::sync::{OnceCell, RwLock};
 use uuid::Uuid;
 
@@ -122,7 +130,73 @@ async fn load_edges() -> Result<Vec<Edge>, anyhow::Error> {
     Ok(x)
 }
 
-pub async fn load_content() -> Result<(Vec<Entity<EntityProperty>>, Vec<Edge>), anyhow::Error> {
+#[derive(FromRow)]
+struct RbacEntry {
+    user: String,
+    resource: String,
+    permission: String,
+    requestor: String,
+    reason: String,
+    time: String,
+}
+
+async fn load_permissions() -> Result<Vec<RbacRecord>, anyhow::Error> {
+    let permissions_table = get_rbac_table();
+    debug!("Loading RBAC from {}", permissions_table);
+    let pool = POOL
+        .get_or_init(|| async { init_pool().await.ok() })
+        .await
+        .clone()
+        .ok_or_else(|| anyhow::Error::msg("Environment variable 'CONNECTION_STR' is not set."))?;
+    debug!("SQLx connection pool acquired, connecting to database");
+    let sql = format!(
+        r#"SELECT project_name, user_name, role_name from {}
+        where delete_by is null
+        "#,
+        permissions_table
+    );
+    let rows: Vec<RbacEntry> = sqlx::query_as::<_, RbacEntry>(&sql)
+        .fetch_all(&pool)
+        .await?;
+    debug!("{} rows loaded", rows.len());
+    rows.into_iter()
+        .map(|entry| {
+            let credential = match entry.user.parse::<Uuid>() {
+                Ok(id) => Credential::App(id),
+                Err(_) => Credential::User(entry.user),
+            };
+            let resource = match entry.resource.as_str() {
+                "global" => Resource::Global,
+                _ => Resource::NamedEntity(entry.resource),
+            };
+            let permission = match entry.permission.as_str() {
+                "consumer" => Permission::Read,
+                "producer" => Permission::Write,
+                "admin" => Permission::Admin,
+                _ => Permission::Read,
+            };
+            let requestor = match entry.requestor.parse::<Uuid>() {
+                Ok(id) => Credential::App(id),
+                Err(_) => Credential::User(entry.requestor),
+            };
+            let reason = entry.reason;
+            let time: DateTime<Utc> = DateTime::parse_from_str(&entry.time, "%Y-%m-%d %H:%M:%S")
+                .map_err(|e| anyhow::Error::new(e))?
+                .with_timezone(&Utc);
+            Ok(RbacRecord {
+                credential,
+                resource,
+                permission,
+                requestor,
+                reason,
+                time,
+            })
+        })
+        .collect()
+}
+
+pub async fn load_content(
+) -> Result<(Vec<Entity<EntityProperty>>, Vec<Edge>, Vec<RbacRecord>), anyhow::Error> {
     let conn_str = std::env::var("CONNECTION_STR")?;
     if conn_str
         .parse::<<AnyConnection as Connection>::Options>()?
@@ -164,6 +238,7 @@ pub async fn load_content() -> Result<(Vec<Entity<EntityProperty>>, Vec<Edge>), 
     debug!("Loading registry data from database");
     let edges = load_edges().await?;
     let entities = load_entities().await?;
+    let permissions = load_permissions().await?;
     debug!(
         "{} entities and {} edges loaded",
         entities.len(),
@@ -172,6 +247,7 @@ pub async fn load_content() -> Result<(Vec<Entity<EntityProperty>>, Vec<Edge>), 
     Ok((
         entities.into_iter().map(|e| e.into()).collect(),
         edges.into_iter().map(|e| e.into()).collect(),
+        permissions,
     ))
 }
 
@@ -415,6 +491,63 @@ impl ExternalStorage<EntityProperty> for SqlxStorage {
         let mut conn = connect()
             .await
             .map_err(|e| RegistryError::ExternalStorageError(format!("{:?}", e)))?;
+        conn.execute(query)
+            .await
+            .map_err(|e| RegistryError::ExternalStorageError(format!("{:?}", e)))?;
+        Ok(())
+    }
+
+    async fn grant_permission(&mut self, grant: &RbacRecord) -> Result<(), RegistryError> {
+        let mut conn = connect()
+            .await
+            .map_err(|e| RegistryError::ExternalStorageError(format!("{:?}", e)))?;
+        let now = match conn.kind() {
+            AnyKind::Postgres => "NOW()",
+            AnyKind::MySql => "NOW()",
+            AnyKind::Sqlite => "datetime('now')",
+        };
+        let sql = format!(
+            "INSERT INTO {}
+            (user_name, role_name, project_name, create_by, create_reason, create_time)
+            values
+            (?, ?, ?, ?, ?, {})",
+            get_rbac_table(),
+            now,
+        );
+        let query = sqlx::query(&sql)
+            .bind(grant.credential.to_string())
+            .bind(grant.permission.to_string())
+            .bind(grant.resource.to_string())
+            .bind(grant.requestor.to_string())
+            .bind(grant.reason.clone());
+        conn.execute(query)
+            .await
+            .map_err(|e| RegistryError::ExternalStorageError(format!("{:?}", e)))?;
+        Ok(())
+    }
+
+    async fn revoke_permission(&mut self, revoke: &RbacRecord) -> Result<(), RegistryError> {
+        let mut conn = connect()
+            .await
+            .map_err(|e| RegistryError::ExternalStorageError(format!("{:?}", e)))?;
+        let now = match conn.kind() {
+            AnyKind::Postgres => "NOW()",
+            AnyKind::MySql => "NOW()",
+            AnyKind::Sqlite => "datetime('now')",
+        };
+        let sql = format!(
+            "UPDATE {}
+            SET delete_by=?, delete_reason=?, delete_time={}
+            WHERE user_name = ? and role_name = ? and project_name = ? and deleted_reason is null",
+            get_rbac_table(),
+            now,
+        );
+        let query = sqlx::query(&sql)
+            .bind(revoke.requestor.to_string())
+            .bind(revoke.reason.clone())
+            .bind(revoke.credential.to_string())
+            .bind(revoke.permission.to_string())
+            .bind(revoke.resource.to_string());
         conn.execute(query)
             .await
             .map_err(|e| RegistryError::ExternalStorageError(format!("{:?}", e)))?;

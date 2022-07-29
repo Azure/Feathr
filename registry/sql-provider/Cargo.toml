@@ -11,21 +11,26 @@ async-trait = "0.1"
 anyhow = "1"
 thiserror = "1"
 itertools = "0.10"
+chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 tokio = { version = "1", features = ["full"] }
 tokio-stream = "0.1.8"
+tracing = "0.1"
+tracing-futures = "0.2"
 petgraph = { version = "0.6", features = ["default", "serde-1"] }
 regex = "1"
 tantivy = "0.18"
-tiberius = { version = "0.9", features = [
+tiberius = { version = "0.10", features = [
+    "chrono",
     "tds73",
     "tokio-rustls",
     "sql-browser-tokio",
 ], default-features = false, optional = true }
+tiberius-derive = "0.0.2"
 bb8 = { version = "0.8", optional = true }
-bb8-tiberius = { version = "0.11", features = [
+bb8-tiberius = { version = "0.12", features = [
     "default",
     "tls",
 ], default-features = false, optional = true }
@@ -34,6 +39,7 @@ sqlx = { version = "0.6.0", features = [
     "any",
     "uuid",
     "macros",
+    "chrono",
 ], default-features = false, optional = true }
 
 common-utils = { path = "../common-utils" }

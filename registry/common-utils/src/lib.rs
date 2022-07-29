@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
 use log::trace;
+use thiserror::Error;
 
 /// `set!` macro works like `vec!`, but generates a HashSet.
 #[macro_export]
@@ -12,6 +13,19 @@ macro_rules! set {
             temp_set
         }
     };
+}
+
+#[derive(Error, Debug)]
+#[error("{0}")]
+pub struct StringError(String);
+
+impl StringError {
+    pub fn new<T>(s: T) -> Self
+    where
+        T: ToString,
+    {
+        StringError(s.to_string())
+    }
 }
 
 /// Log if `Result` is an error

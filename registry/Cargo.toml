@@ -8,5 +8,6 @@ members = [
     "registry-api",
     "registry-cli",
     "raft-registry",
+    "auth",
 ]
 

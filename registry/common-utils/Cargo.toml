@@ -7,5 +7,6 @@ edition = "2021"
 
 [dependencies]
 log = "0.4"
+thiserror = "1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenv = "0.15"

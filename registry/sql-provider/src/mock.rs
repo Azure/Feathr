@@ -23,6 +23,7 @@ pub async fn load() -> crate::Registry<EntityProperty> {
     let mut r = Registry::<EntityProperty>::load(
         data.guid_entity_map.into_iter().map(|(_, i)| i.into()),
         data.relations.into_iter().map(|i| i.into()),
+        vec![].into_iter(),
     )
     .await
     .unwrap();

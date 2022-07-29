@@ -1,13 +1,18 @@
-use poem::web::Data;
+use common_utils::StringError;
+use poem::{
+    error::{BadRequest, InternalServerError},
+    web::Data,
+};
 use poem_openapi::{
     param::{Header, Path, Query},
     payload::Json,
     OpenApi, Tags,
 };
 use registry_api::{
-    AnchorDef, AnchorFeatureDef, CreationResponse, DerivedFeatureDef, Entities, Entity,
-    EntityLineage, FeathrApiRequest, ProjectDef, SourceDef, ApiError,
+    AnchorDef, AnchorFeatureDef, ApiError, CreationResponse, DerivedFeatureDef, Entities, Entity,
+    EntityLineage, FeathrApiRequest, ProjectDef, RbacResponse, SourceDef,
 };
+use registry_provider::{Credential, Permission};
 use uuid::Uuid;
 
 use crate::RaftRegistryApp;
@@ -20,6 +25,7 @@ enum ApiTags {
     AnchorFeature,
     DerivedFeature,
     Feature,
+    Rbac,
 }
 
 pub struct FeathrApiV2;
@@ -29,12 +35,16 @@ impl FeathrApiV2 {
     #[oai(path = "/projects", method = "get", tag = "ApiTags::Project")]
     async fn get_projects(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         keyword: Query<Option<String>>,
         size: Query<Option<usize>>,
         offset: Query<Option<usize>>,
     ) -> poem::Result<Json<Vec<String>>> {
+        data.0
+            .check_permission(credential.0, None, Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -52,10 +62,14 @@ impl FeathrApiV2 {
     #[oai(path = "/projects", method = "post", tag = "ApiTags::Project")]
     async fn new_project(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-requestor")] creator: Header<Option<String>>,
         def: Json<ProjectDef>,
     ) -> poem::Result<Json<CreationResponse>> {
+        data.0
+            .check_permission(credential.0, None, Permission::Write)
+            .await?;
         let mut definition = def.0;
         if definition.id.is_empty() {
             definition.id = Uuid::new_v4().to_string();
@@ -63,23 +77,46 @@ impl FeathrApiV2 {
         if definition.created_by.is_empty() {
             definition.created_by = creator.0.unwrap_or_default();
         }
-        data.0
-            .request(
-                None,
-                FeathrApiRequest::CreateProject { definition },
-            )
+        let ret = data
+            .0
+            .request(None, FeathrApiRequest::CreateProject { definition })
             .await
-            .into_uuid_and_version()
-            .map(|v| Json(v.into()))
+            .into_uuid_and_version();
+        // Grant project admin permission to the creator of the project.
+        if let Ok((uuid, _)) = &ret {
+            let ret = data
+                .0
+                .request(
+                    None,
+                    FeathrApiRequest::AddUserRole {
+                        project_id_or_name: uuid.to_string(),
+                        user: credential.0.clone(),
+                        role: Permission::Admin,
+                        requestor: credential.0.clone(),
+                        reason: "Created project".to_string(),
+                    },
+                )
+                .await;
+            match ret {
+                registry_api::FeathrApiResponse::Error(e) => return Err(e.into()),
+                _ => {}
+            }
+        }
+
+        ret.map(|v| Json(v.into()))
     }
 
     #[oai(path = "/projects/:project", method = "get", tag = "ApiTags::Project")]
     async fn get_project(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
     ) -> poem::Result<Json<Entity>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -99,10 +136,14 @@ impl FeathrApiV2 {
     )]
     async fn get_project_lineage(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
     ) -> poem::Result<Json<EntityLineage>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -122,6 +163,7 @@ impl FeathrApiV2 {
     )]
     async fn get_project_features(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
@@ -129,6 +171,9 @@ impl FeathrApiV2 {
         size: Query<Option<usize>>,
         offset: Query<Option<usize>>,
     ) -> poem::Result<Json<Entities>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -151,6 +196,7 @@ impl FeathrApiV2 {
     )]
     async fn get_datasources(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
@@ -158,6 +204,9 @@ impl FeathrApiV2 {
         size: Query<Option<usize>>,
         offset: Query<Option<usize>>,
     ) -> poem::Result<Json<Entities>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -180,11 +229,15 @@ impl FeathrApiV2 {
     )]
     async fn new_datasource(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-requestor")] creator: Header<Option<String>>,
         project: Path<String>,
         def: Json<SourceDef>,
     ) -> poem::Result<Json<CreationResponse>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Write)
+            .await?;
         let mut definition = def.0;
         if definition.id.is_empty() {
             definition.id = Uuid::new_v4().to_string();
@@ -212,11 +265,15 @@ impl FeathrApiV2 {
     )]
     async fn get_datasource(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
         source: Path<String>,
     ) -> poem::Result<Json<Entity>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -237,11 +294,15 @@ impl FeathrApiV2 {
     )]
     async fn get_datasource_versions(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
         source: Path<String>,
     ) -> poem::Result<Json<Entities>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -262,12 +323,16 @@ impl FeathrApiV2 {
     )]
     async fn get_datasource_version(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
         source: Path<String>,
         version: Path<String>,
     ) -> poem::Result<Json<Entity>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -289,6 +354,7 @@ impl FeathrApiV2 {
     )]
     async fn get_project_derived_features(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
@@ -296,6 +362,9 @@ impl FeathrApiV2 {
         size: Query<Option<usize>>,
         offset: Query<Option<usize>>,
     ) -> poem::Result<Json<Entities>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -318,11 +387,15 @@ impl FeathrApiV2 {
     )]
     async fn new_derived_feature(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-requestor")] creator: Header<Option<String>>,
         project: Path<String>,
         def: Json<DerivedFeatureDef>,
     ) -> poem::Result<Json<CreationResponse>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Write)
+            .await?;
         let mut definition = def.0;
         if definition.id.is_empty() {
             definition.id = Uuid::new_v4().to_string();
@@ -350,11 +423,15 @@ impl FeathrApiV2 {
     )]
     async fn get_project_derived_feature(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
         feature: Path<String>,
     ) -> poem::Result<Json<Entity>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -375,11 +452,15 @@ impl FeathrApiV2 {
     )]
     async fn get_project_derived_feature_versions(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
         feature: Path<String>,
     ) -> poem::Result<Json<Entities>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -400,12 +481,16 @@ impl FeathrApiV2 {
     )]
     async fn get_project_derived_feature_version(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
         feature: Path<String>,
-        version: Path<String>
+        version: Path<String>,
     ) -> poem::Result<Json<Entity>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -427,6 +512,7 @@ impl FeathrApiV2 {
     )]
     async fn get_project_anchors(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
@@ -434,6 +520,9 @@ impl FeathrApiV2 {
         size: Query<Option<usize>>,
         offset: Query<Option<usize>>,
     ) -> poem::Result<Json<Entities>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -456,11 +545,15 @@ impl FeathrApiV2 {
     )]
     async fn new_anchor(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-requestor")] creator: Header<Option<String>>,
         project: Path<String>,
         def: Json<AnchorDef>,
     ) -> poem::Result<Json<CreationResponse>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Write)
+            .await?;
         let mut definition = def.0;
         if definition.id.is_empty() {
             definition.id = Uuid::new_v4().to_string();
@@ -488,11 +581,15 @@ impl FeathrApiV2 {
     )]
     async fn get_anchor(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
         anchor: Path<String>,
     ) -> poem::Result<Json<Entity>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -513,11 +610,15 @@ impl FeathrApiV2 {
     )]
     async fn get_anchor_versions(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
         anchor: Path<String>,
     ) -> poem::Result<Json<Entities>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -538,12 +639,16 @@ impl FeathrApiV2 {
     )]
     async fn get_anchor_version(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
         anchor: Path<String>,
-        version: Path<String>
+        version: Path<String>,
     ) -> poem::Result<Json<Entity>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -565,6 +670,7 @@ impl FeathrApiV2 {
     )]
     async fn get_anchor_features(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
@@ -573,6 +679,9 @@ impl FeathrApiV2 {
         size: Query<Option<usize>>,
         offset: Query<Option<usize>>,
     ) -> poem::Result<Json<Entities>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -596,12 +705,16 @@ impl FeathrApiV2 {
     )]
     async fn new_anchor_feature(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-requestor")] creator: Header<Option<String>>,
         project: Path<String>,
         anchor: Path<String>,
         def: Json<AnchorFeatureDef>,
     ) -> poem::Result<Json<CreationResponse>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Write)
+            .await?;
         let mut definition = def.0;
         if definition.id.is_empty() {
             definition.id = Uuid::new_v4().to_string();
@@ -630,12 +743,16 @@ impl FeathrApiV2 {
     )]
     async fn get_project_anchor_feature(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
         anchor: Path<String>,
         feature: Path<String>,
     ) -> poem::Result<Json<Entity>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -657,12 +774,16 @@ impl FeathrApiV2 {
     )]
     async fn get_project_anchor_feature_versions(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
         anchor: Path<String>,
         feature: Path<String>,
     ) -> poem::Result<Json<Entities>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -684,6 +805,7 @@ impl FeathrApiV2 {
     )]
     async fn get_project_anchor_feature_version(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         project: Path<String>,
@@ -691,6 +813,9 @@ impl FeathrApiV2 {
         feature: Path<String>,
         version: Path<String>,
     ) -> poem::Result<Json<Entity>> {
+        data.0
+            .check_permission(credential.0, Some(&project), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -709,10 +834,14 @@ impl FeathrApiV2 {
     #[oai(path = "/features/:feature", method = "get", tag = "ApiTags::Feature")]
     async fn get_feature(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         feature: Path<String>,
     ) -> poem::Result<Json<Entity>> {
+        data.0
+            .check_permission(credential.0, Some(&feature), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -732,10 +861,14 @@ impl FeathrApiV2 {
     )]
     async fn get_feature_lineage(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         feature: Path<String>,
     ) -> poem::Result<Json<EntityLineage>> {
+        data.0
+            .check_permission(credential.0, Some(&feature), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -755,10 +888,14 @@ impl FeathrApiV2 {
     )]
     async fn get_feature_project(
         &self,
+        credential: Data<&Credential>,
         data: Data<&RaftRegistryApp>,
         #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
         feature: Path<String>,
     ) -> poem::Result<Json<Entity>> {
+        data.0
+            .check_permission(credential.0, Some(&feature), Permission::Read)
+            .await?;
         data.0
             .request(
                 opt_seq.0,
@@ -770,16 +907,135 @@ impl FeathrApiV2 {
             .into_entity()
             .map(Json)
     }
+
+    #[oai(path = "/userroles", method = "get", tag = "ApiTags::Rbac")]
+    async fn get_user_roles(
+        &self,
+        credential: Data<&Credential>,
+        data: Data<&RaftRegistryApp>,
+        #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
+    ) -> poem::Result<Json<Vec<RbacResponse>>> {
+        data.0
+            .check_permission(credential.0, Some("global"), Permission::Admin)
+            .await?;
+        data.0
+            .request(opt_seq.0, FeathrApiRequest::GetUserRoles)
+            .await
+            .into_user_roles()
+            .map(Json)
+    }
+
+    #[oai(
+        path = "/users/:user/userroles/add",
+        method = "post",
+        tag = "ApiTags::Rbac"
+    )]
+    async fn add_user_role(
+        &self,
+        credential: Data<&Credential>,
+        data: Data<&RaftRegistryApp>,
+        #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
+        user: Path<String>,
+        project: Query<String>,
+        role: Query<String>,
+        reason: Query<String>,
+    ) -> poem::Result<Json<String>> {
+        data.0
+            .check_permission(credential.0, Some("global"), Permission::Admin)
+            .await?;
+        let resp = data
+            .0
+            .request(
+                opt_seq.0,
+                FeathrApiRequest::AddUserRole {
+                    user: user.0.parse().map_err(|e| BadRequest(e))?,
+                    project_id_or_name: project.0,
+                    role: match role.0.to_lowercase().as_str() {
+                        "admin" => Permission::Admin,
+                        "consumer" => Permission::Read,
+                        "producer" => Permission::Write,
+                        _ => {
+                            return Err(BadRequest(StringError::new(format!(
+                                "invalid role {}",
+                                role.0
+                            ))))
+                        }
+                    },
+                    requestor: credential.0.to_owned(),
+                    reason: reason.0,
+                },
+            )
+            .await;
+        match resp {
+            registry_api::FeathrApiResponse::Unit => Ok(Json("OK".to_string())),
+            registry_api::FeathrApiResponse::Error(e) => Err(e.into()),
+            _ => Err(InternalServerError(StringError::new(
+                "Internal Server Error",
+            ))),
+        }
+    }
+
+    #[oai(
+        path = "/users/:user/userroles/add",
+        method = "delete",
+        tag = "ApiTags::Rbac"
+    )]
+    async fn delete_user_role(
+        &self,
+        credential: Data<&Credential>,
+        data: Data<&RaftRegistryApp>,
+        #[oai(name = "x-registry-opt-seq")] opt_seq: Header<Option<u64>>,
+        user: Path<String>,
+        project: Query<String>,
+        role: Query<String>,
+        reason: Query<String>,
+    ) -> poem::Result<Json<String>> {
+        data.0
+            .check_permission(credential.0, Some("global"), Permission::Admin)
+            .await?;
+        let resp = data
+            .0
+            .request(
+                opt_seq.0,
+                FeathrApiRequest::DeleteUserRole {
+                    user: user.0.parse().map_err(|e| BadRequest(e))?,
+                    project_id_or_name: project.0,
+                    role: match role.0.to_lowercase().as_str() {
+                        "admin" => Permission::Admin,
+                        "consumer" => Permission::Read,
+                        "producer" => Permission::Write,
+                        _ => {
+                            return Err(BadRequest(StringError::new(format!(
+                                "invalid role {}",
+                                role.0
+                            ))))
+                        }
+                    },
+                    requestor: credential.0.to_owned(),
+                    reason: reason.0,
+                },
+            )
+            .await;
+        match resp {
+            registry_api::FeathrApiResponse::Unit => Ok(Json("OK".to_string())),
+            registry_api::FeathrApiResponse::Error(e) => Err(e.into()),
+            _ => Err(InternalServerError(StringError::new(
+                "Internal Server Error",
+            ))),
+        }
+    }
 }
 
 fn parse_version<T>(v: T) -> Result<Option<u64>, ApiError>
 where
-    T: AsRef<str>
+    T: AsRef<str>,
 {
-    if v.as_ref() =="latest" {
+    if v.as_ref() == "latest" {
         return Ok(None);
     }
-    Ok(Some(v.as_ref().parse().map_err(|_| ApiError::BadRequest(format!("Invalid version spec {}", v.as_ref())))?))
+    Ok(Some(v.as_ref().parse().map_err(|_| {
+        ApiError::BadRequest(format!("Invalid version spec {}", v.as_ref()))
+    })?))
 }
 
 #[cfg(test)]

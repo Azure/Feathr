@@ -1,4 +1,4 @@
-use registry_provider::{EntityProperty, Entity, Edge};
+use registry_provider::{EntityProperty, Entity, Edge, RbacRecord};
 
 use crate::Registry;
 
@@ -16,6 +16,10 @@ fn get_edge_table() -> String {
     std::env::var("EDGE_TABLE").unwrap_or_else(|_| "edges".to_string())
 }
 
+fn get_rbac_table() -> String {
+    std::env::var("RBAC_TABLE").unwrap_or_else(|_| "userroles".to_string())
+}
+
 pub fn attach_storage(registry: &mut Registry<EntityProperty>) {
     #[cfg(feature = "mssql")]
     if mssql::validate_condition() {
@@ -29,7 +33,7 @@ pub fn attach_storage(registry: &mut Registry<EntityProperty>) {
 }
 
 pub async fn load_content(
-) -> Result<(Vec<Entity<EntityProperty>>, Vec<Edge>), anyhow::Error> {
+) -> Result<(Vec<Entity<EntityProperty>>, Vec<Edge>, Vec<RbacRecord>), anyhow::Error> {
     #[cfg(feature = "mssql")]
     if mssql::validate_condition() {
         return mssql::load_content().await;

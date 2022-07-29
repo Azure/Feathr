@@ -1,6 +1,7 @@
 mod database;
 mod db_registry;
 mod fts;
+mod rbac_map;
 mod serdes;
 
 #[cfg(any(mock, test))]
@@ -12,11 +13,11 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 pub use database::{attach_storage, load_content};
 pub use db_registry::Registry;
-use log::debug;
+use log::{debug, warn};
 use registry_provider::{
-    extract_version, AnchorDef, AnchorFeatureDef, DerivedFeatureDef, Edge, EdgeType, Entity,
-    EntityPropMutator, EntityType, ProjectDef, RegistryError, RegistryProvider, SourceDef,
-    ToDocString,
+    extract_version, AnchorDef, AnchorFeatureDef, Credential, DerivedFeatureDef, Edge, EdgeType,
+    Entity, EntityPropMutator, EntityType, Permission, ProjectDef, RbacError, RbacProvider,
+    RbacRecord, RegistryError, RegistryProvider, Resource, SourceDef, ToDocString,
 };
 use uuid::Uuid;
 
@@ -32,9 +33,12 @@ where
         &mut self,
         entities: Vec<Entity<EntityProp>>,
         edges: Vec<Edge>,
+        permissions: Vec<RbacRecord>,
     ) -> Result<(), RegistryError> {
         self.batch_load(entities.into_iter(), edges.into_iter())
-            .await
+            .await?;
+        self.load_permissions(permissions.into_iter())?;
+        Ok(())
     }
 
     /**
@@ -438,5 +442,137 @@ where
             .cloned()
             .unwrap_or_default()
             + 1
+    }
+}
+
+#[async_trait]
+impl<EntityProp> RbacProvider for Registry<EntityProp>
+where
+    EntityProp: Clone + Debug + PartialEq + Eq + EntityPropMutator + ToDocString + Send + Sync,
+{
+    #[tracing::instrument(level = "trace", skip(self))]
+    fn check_permission(
+        &self,
+        credential: &Credential,
+        resource: &Resource,
+        permission: Permission,
+    ) -> Result<bool, RegistryError> {
+        if credential == &Credential::RbacDisabled {
+            return Ok(true);
+        }
+        // Get corresponding project to the resource
+        let resource = match resource {
+            Resource::NamedEntity(name) => {
+                let id = self.get_entity_id(name)?;
+                let proj_id = self.get_entity_project_id(id)?;
+                Resource::Entity(proj_id)
+            }
+            Resource::Entity(id) => {
+                let proj_id = self.get_entity_project_id(*id)?;
+                Resource::Entity(proj_id)
+            }
+            Resource::Global => Resource::Global,
+        };
+        // User must be either Global Admin or Project Admin or having the permission on the resource
+        Ok(self
+            .permission_map
+            .check_permission(credential, &Resource::Global, Permission::Admin)
+            || self
+                .permission_map
+                .check_permission(credential, &resource, Permission::Admin)
+            || self
+                .permission_map
+                .check_permission(credential, &resource, permission))
+    }
+
+    fn load_permissions<RI>(&mut self, permissions: RI) -> Result<(), RegistryError>
+    where
+        RI: Iterator<Item = RbacRecord>,
+    {
+        for mut record in permissions {
+            let resource = match &record.resource {
+                Resource::NamedEntity(name) => match name.parse::<Uuid>() {
+                    Ok(id) => Resource::Entity(id),
+                    Err(_) => Resource::Entity(match self.get_entity_by_name(&name, None) {
+                        Some(e) => e.id,
+                        None => {
+                            warn!("Entity {} not found, skipped", name);
+                            continue;
+                        }
+                    }),
+                },
+                _ => record.resource,
+            };
+            record.resource = resource;
+            self.permission_map.grant_permission(&record);
+        }
+        Ok(())
+    }
+
+    fn get_permissions(&self) -> Result<Vec<RbacRecord>, RegistryError> {
+        Ok(self
+            .permission_map
+            .iter()
+            .map(|(credential, permission, resource)| RbacRecord {
+                credential: credential.to_owned(),
+                resource: resource.resource.to_owned(),
+                permission: permission.to_owned(),
+                requestor: resource.granted_by.to_owned(),
+                reason: resource.reason.to_owned(),
+                time: resource.granted_time,
+            })
+            .collect())
+    }
+
+    async fn grant_permission(&mut self, grant: &RbacRecord) -> Result<(), RegistryError> {
+        // User `granted_by` must have the permission to grant the permission
+        if !self.check_permission(&grant.requestor, &grant.resource, Permission::Admin)? {
+            return Err(RbacError::PermissionDenied(
+                grant.requestor.to_string(),
+                grant.resource.to_owned(),
+                grant.permission,
+            )
+            .into());
+        }
+
+        // Permission already granted, no need to do anything
+        if self.check_permission(&grant.credential, &grant.resource, grant.permission)? {
+            return Ok(());
+        }
+
+        // Record permission granting info to the external storages
+        for storage in self.external_storage.iter() {
+            storage.write().await.grant_permission(&grant).await?;
+        }
+
+        // Update local data structure
+        self.permission_map.grant_permission(&grant);
+        Ok(())
+    }
+
+    async fn revoke_permission(&mut self, revoke: &RbacRecord) -> Result<(), RegistryError> {
+        // User `revoked_by` must have the permission to grant the permission
+        if !self.check_permission(&revoke.requestor, &revoke.resource, Permission::Admin)? {
+            return Err(RbacError::PermissionDenied(
+                revoke.requestor.to_string(),
+                revoke.resource.to_owned(),
+                revoke.permission,
+            )
+            .into());
+        }
+
+        // Permission not granted, no need to do anything
+        if !self.check_permission(&revoke.credential, &revoke.resource, revoke.permission)? {
+            return Ok(());
+        }
+
+        // Record permission revoking info to the external storages
+        for storage in self.external_storage.iter() {
+            storage.write().await.revoke_permission(&revoke).await?;
+        }
+
+        // Update local data structure
+        self.permission_map.revoke_permission(&revoke);
+        Ok(())
     }
 }

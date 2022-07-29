@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::EntityType;
+use crate::{EntityType, RbacError};
 
 #[derive(Clone, Debug, Error, Serialize, Deserialize)]
 pub enum RegistryError {
@@ -34,5 +34,8 @@ pub enum RegistryError {
 
     #[error("{0}")]
     ExternalStorageError(String),
+
+    #[error(transparent)]
+    RbacError(#[from] RbacError),
 }
 

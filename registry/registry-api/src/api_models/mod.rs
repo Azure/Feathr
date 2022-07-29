@@ -9,10 +9,12 @@ use crate::error::ApiError;
 mod attributes;
 mod edge;
 mod entity;
+mod rbac;
 
 pub use attributes::*;
 pub use edge::*;
 pub use entity::*;
+pub use rbac::*;
 
 fn parse_uuid(s: &str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(s).map_err(|_| ApiError::BadRequest(format!("Invalid GUID `{}`", s)))
