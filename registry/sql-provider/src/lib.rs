@@ -489,6 +489,7 @@ where
     where
         RI: Iterator<Item = RbacRecord>,
     {
+        // Always use entity id as resource in the permission map
         for mut record in permissions {
             let resource = match &record.resource {
                 Resource::NamedEntity(name) => match name.parse::<Uuid>() {
@@ -510,18 +511,19 @@ where
     }
 
     fn get_permissions(&self) -> Result<Vec<RbacRecord>, RegistryError> {
-        Ok(self
-            .permission_map
+        self.permission_map
             .iter()
-            .map(|(credential, permission, resource)| RbacRecord {
-                credential: credential.to_owned(),
-                resource: resource.resource.to_owned(),
-                permission: permission.to_owned(),
-                requestor: resource.granted_by.to_owned(),
-                reason: resource.reason.to_owned(),
-                time: resource.granted_time,
+            .map(|(credential, permission, resource)| {
+                Ok(RbacRecord {
+                    credential: credential.to_owned(),
+                    resource: self.to_named_entity_resource(&resource.resource)?,
+                    permission: permission.to_owned(),
+                    requestor: resource.granted_by.to_owned(),
+                    reason: resource.reason.to_owned(),
+                    time: resource.granted_time,
+                })
             })
-            .collect())
+            .collect()
     }
 
     async fn grant_permission(&mut self, grant: &RbacRecord) -> Result<(), RegistryError> {
@@ -540,10 +542,17 @@ where
             return Ok(());
         }
 
+        let mut grant = grant.clone();
+
+        // Resolve corresponding project id from the input resource
+        grant.resource = self.to_named_entity_resource(&grant.resource)?;
+
         // Record permission granting info to the external storages
         for storage in self.external_storage.iter() {
             storage.write().await.grant_permission(&grant).await?;
         }
+
+        grant.resource = self.to_entity_resource(&grant.resource)?;
 
         // Update local data structure
         self.permission_map.grant_permission(&grant);
@@ -565,6 +574,13 @@ where
         if !self.check_permission(&revoke.credential, &revoke.resource, revoke.permission)? {
             return Ok(());
         }
+
+        let mut revoke = revoke.clone();
+
+        // Always use name as resource in the external storage
+        revoke.resource = self.to_named_entity_resource(&revoke.resource)?;
+
+        revoke.resource = self.to_entity_resource(&revoke.resource)?;
 
         // Record permission revoking info to the external storages
         for storage in self.external_storage.iter() {

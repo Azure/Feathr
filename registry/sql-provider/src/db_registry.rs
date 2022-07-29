@@ -82,15 +82,9 @@ where
         edge_id: Uuid,
     ) -> Result<(), RegistryError>;
 
-    async fn grant_permission(
-        &mut self,
-        grant: &RbacRecord,
-    ) -> Result<(), RegistryError>;
+    async fn grant_permission(&mut self, grant: &RbacRecord) -> Result<(), RegistryError>;
 
-    async fn revoke_permission(
-        &mut self,
-        revoke: &RbacRecord,
-    ) -> Result<(), RegistryError>;
+    async fn revoke_permission(&mut self, revoke: &RbacRecord) -> Result<(), RegistryError>;
 }
 
 #[derive(Debug)]
@@ -788,6 +782,44 @@ where
             },
         )
     }
+
+    pub(crate) fn to_entity_resource(&self, r: &Resource) -> Result<Resource, RegistryError> {
+        Ok(match &r {
+            Resource::NamedEntity(name) => {
+                let id = self.get_entity_id(name)?;
+                let proj_id = self.get_entity_project_id(id)?;
+                Resource::Entity(proj_id)
+            }
+            Resource::Entity(id) => {
+                let proj_id = self.get_entity_project_id(*id)?;
+                Resource::Entity(proj_id)
+            }
+            Resource::Global => Resource::Global,
+        })
+    }
+
+    pub(crate) fn to_named_entity_resource(&self, r: &Resource) -> Result<Resource, RegistryError> {
+        Ok(match &r {
+            Resource::NamedEntity(name) => {
+                let id = self.get_entity_id(name)?;
+                let proj_id = self.get_entity_project_id(id)?;
+                let proj_name = self
+                    .get_entity_by_id(proj_id)
+                    .ok_or_else(|| RegistryError::EntityNotFound(proj_id.to_string()))?
+                    .name;
+                Resource::NamedEntity(proj_name)
+            }
+            Resource::Entity(id) => {
+                let proj_id = self.get_entity_project_id(*id)?;
+                let proj_name = self
+                    .get_entity_by_id(proj_id)
+                    .ok_or_else(|| RegistryError::EntityNotFound(proj_id.to_string()))?
+                    .name;
+                Resource::NamedEntity(proj_name)
+            }
+            Resource::Global => Resource::Global,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -892,17 +924,11 @@ mod tests {
             Ok(())
         }
 
-        async fn grant_permission(
-            &mut self,
-            _grant: &RbacRecord,
-        ) -> Result<(), RegistryError> {
+        async fn grant_permission(&mut self, _grant: &RbacRecord) -> Result<(), RegistryError> {
             Ok(())
         }
 
-        async fn revoke_permission(
-            &mut self,
-            _revoke: &RbacRecord,
-        ) -> Result<(), RegistryError> {
+        async fn revoke_permission(&mut self, _revoke: &RbacRecord) -> Result<(), RegistryError> {
             Ok(())
         }
     }

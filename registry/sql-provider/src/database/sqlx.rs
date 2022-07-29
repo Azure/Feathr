@@ -3,6 +3,7 @@ use std::{str::FromStr, sync::Arc};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use log::debug;
+use serde::Deserialize;
 use sqlx::{
     any::AnyKind, pool::PoolConnection, Any, AnyConnection, AnyPool, ConnectOptions, Connection,
     Executor, FromRow,
@@ -130,14 +131,14 @@ async fn load_edges() -> Result<Vec<Edge>, anyhow::Error> {
     Ok(x)
 }
 
-#[derive(FromRow)]
+#[derive(Debug, FromRow, Deserialize)]
 struct RbacEntry {
     user: String,
     resource: String,
     permission: String,
     requestor: String,
     reason: String,
-    time: String,
+    time: DateTime<Utc>,
 }
 
 async fn load_permissions() -> Result<Vec<RbacRecord>, anyhow::Error> {
@@ -150,7 +151,7 @@ async fn load_permissions() -> Result<Vec<RbacRecord>, anyhow::Error> {
         .ok_or_else(|| anyhow::Error::msg("Environment variable 'CONNECTION_STR' is not set."))?;
     debug!("SQLx connection pool acquired, connecting to database");
     let sql = format!(
-        r#"SELECT project_name, user_name, role_name from {}
+        r#"SELECT user_name as user, project_name as resource, role_name as permission, create_by as requestor, create_reason as reason, create_time as time from {}
         where delete_by is null
         "#,
         permissions_table
@@ -179,17 +180,13 @@ async fn load_permissions() -> Result<Vec<RbacRecord>, anyhow::Error> {
                 Ok(id) => Credential::App(id),
                 Err(_) => Credential::User(entry.requestor),
             };
-            let reason = entry.reason;
-            let time: DateTime<Utc> = DateTime::parse_from_str(&entry.time, "%Y-%m-%d %H:%M:%S")
-                .map_err(|e| anyhow::Error::new(e))?
-                .with_timezone(&Utc);
             Ok(RbacRecord {
                 credential,
                 resource,
                 permission,
                 requestor,
-                reason,
-                time,
+                reason: entry.reason,
+                time: entry.time,
             })
         })
         .collect()
