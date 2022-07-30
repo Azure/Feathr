@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
 use handlebars::Handlebars;
-use log::debug;
+use log::{debug, trace};
 use reqwest::Url;
 use serde::Serialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -313,7 +313,7 @@ where
                 .into_iter(),
             );
         }
-        debug!("Arguments: {}", serde_json::to_string_pretty(&ret).unwrap());
+        trace!("Arguments: {}", serde_json::to_string_pretty(&ret).unwrap());
         Ok(ret)
     }
 

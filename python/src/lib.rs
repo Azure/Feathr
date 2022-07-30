@@ -1896,23 +1896,23 @@ impl FeathrClient {
         })
     }
 
-    fn load_project(&self, name: &str) -> PyResult<FeathrProject> {
-        let project = block_on(async move {
+    fn load_project<'p>(&self, name: &str, py: Python<'p>) -> PyResult<FeathrProject> {
+        let project = block_on(cancelable_wait(py, async move {
             self.0
                 .load_project(name)
                 .await
                 .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))
-        })?;
+        }))?;
         Ok(FeathrProject(project, self.clone()))
     }
 
-    fn new_project(&self, name: &str) -> PyResult<FeathrProject> {
-        let project = block_on(async move {
+    fn new_project<'p>(&self, name: &str, py: Python<'p>) -> PyResult<FeathrProject> {
+        let project = block_on(cancelable_wait(py, async move {
             self.0
                 .new_project(name)
                 .await
                 .map_err(|e| PyRuntimeError::new_err(format!("{:#?}", e)))
-        })?;
+        }))?;
         Ok(FeathrProject(project, self.clone()))
     }
 

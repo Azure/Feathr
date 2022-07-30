@@ -36,7 +36,11 @@ impl FeathrApiClient {
             client: Default::default(),
             version,
             credential: if auth {
-                Some(Arc::new(DefaultAzureCredentialBuilder::new().build()))
+                Some(Arc::new(
+                    DefaultAzureCredentialBuilder::new()
+                        .exclude_managed_identity_credential()
+                        .build(),
+                ))
             } else {
                 None
             },
@@ -66,7 +70,11 @@ impl FeathrApiClient {
                 .parse()
                 .map_err(|e| crate::Error::InvalidConfig(format!("Invalid api_version, {}", e)))?,
             credential: if auth {
-                Some(Arc::new(DefaultAzureCredentialBuilder::new().build()))
+                Some(Arc::new(
+                    DefaultAzureCredentialBuilder::new()
+                        .exclude_managed_identity_credential()
+                        .build(),
+                ))
             } else {
                 None
             },
@@ -76,7 +84,7 @@ impl FeathrApiClient {
     async fn auth(&self, builder: RequestBuilder) -> Result<RequestBuilder, Error> {
         Ok(if let Some(cred) = self.credential.clone() {
             debug!("Acquiring token");
-            match cred.get_token("https://graph.microsoft.com/").await {
+            match cred.get_token("https://management.azure.com/").await {
                 Ok(res) => {
                     debug!("Token acquired");
                     builder.bearer_auth(res.token.secret())

@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use bytes::Bytes;
 use dbfs_client::DbfsClient;
-use log::{debug, warn};
+use log::{debug, warn, trace};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
 
@@ -99,7 +99,7 @@ impl DatabricksClient {
             .await?
             .json()
             .await?;
-        debug!("Status response: {:#?}", resp);
+        trace!("Status response: {:#?}", resp);
         let status = match resp.metadata.state.life_cycle_state {
             RunLifeCycleState::Pending => JobStatus::Starting,
             RunLifeCycleState::Running | RunLifeCycleState::Terminating => JobStatus::Running,
@@ -164,7 +164,7 @@ impl DatabricksClient {
                 .await?,
         )?;
 
-        debug!("{:#?}", value);
+        trace!("{:#?}", value);
 
         let config_template = serde_yaml::from_value::<ConfigTemplate>(value.to_owned())?;
         let nc = config_template.cluster;
@@ -429,7 +429,7 @@ impl JobClient for DatabricksClient {
             }],
             run_name: request.name,
         };
-        debug!(
+        trace!(
             "Job request: {}",
             serde_json::to_string_pretty(&job).unwrap()
         );
