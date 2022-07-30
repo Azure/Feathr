@@ -159,11 +159,13 @@ pub async fn readiness(app: Data<&RaftRegistryApp>) -> poem::Result<impl IntoRes
     let m = app.raft.metrics().borrow().clone();
     Ok(
         if m.running_state.is_ok() && m.current_leader.is_some() && m.last_applied.is_some() {
-            PlainText("OK").with_status(StatusCode::OK)
+            PlainText("OK").with_status(StatusCode::OK).into_response()
         } else {
-            PlainText("Not Ok").with_status(StatusCode::BAD_REQUEST)
-        }
-        .into_response(),
+            PlainText("Not Ok")
+                .with_header("Retry-After", 5)
+                .with_status(StatusCode::SERVICE_UNAVAILABLE)
+                .into_response()
+        },
     )
 }
 

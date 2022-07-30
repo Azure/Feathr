@@ -21,20 +21,19 @@ create index entity_dep_from_id_index
 create index entity_dep_to_id_index
     on edges (to_id);
 
-
 create table userroles
 (
-    record_id     int auto_increment
+    record_id     SERIAL
         primary key,
     project_name  varchar(255) not null,
     user_name     varchar(255) not null,
     role_name     varchar(50)  not null,
     create_by     varchar(255) not null,
     create_reason text         not null,
-    create_time   datetime     not null,
+    create_time   TIMESTAMPTZ  not null,
     delete_by     varchar(255) null,
     delete_reason text         null,
-    delete_time   datetime     null
+    delete_time   TIMESTAMPTZ  null
 );
 
 create index create_by

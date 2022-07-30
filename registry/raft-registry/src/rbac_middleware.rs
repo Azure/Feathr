@@ -3,7 +3,10 @@ use std::str::FromStr;
 use auth::decode_token;
 use common_utils::StringError;
 use log::warn;
-use poem::{error::{BadRequest, Forbidden}, Endpoint, Middleware, Request, Result};
+use poem::{
+    error::{BadRequest, Forbidden},
+    Endpoint, Middleware, Request, Result,
+};
 use registry_provider::Credential;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -29,24 +32,28 @@ const DEBUG_TOKEN_HEADER: &str = "x-feathr-debug-token";
 #[derive(Default, Deserialize)]
 #[serde(default)]
 struct Claims {
-    app_id: Option<String>,
+    appid: Option<String>,
     preferred_username: Option<String>,
     email: Option<String>,
+    upn: Option<String>,
+    unique_name: Option<String>,
 }
 
 impl Claims {
-    fn get_credential(&self) -> Result<Credential> {
-        match &self.app_id {
-            Some(s) => {
-                let id: Uuid = s.parse().map_err(|e| BadRequest(e))?;
-                Ok(Credential::App(id))
-            }
-            None => match &self.preferred_username {
-                Some(s) => Ok(Credential::User(s.to_owned())),
-                None => match &self.email {
-                    Some(s) => Ok(Credential::User(s.to_owned())),
-                    None => Err(BadRequest(StringError::new("Invalid token claims"))),
-                },
+    fn get_credential(self) -> Result<Credential> {
+        match self
+            .preferred_username
+            .or(self.email)
+            .or(self.upn)
+            .or(self.unique_name)
+        {
+            Some(s) => Ok(Credential::User(s.to_owned())),
+            None => match &self.appid {
+                Some(s) => {
+                    let id: Uuid = s.parse().map_err(|e| BadRequest(e))?;
+                    Ok(Credential::App(id))
+                }
+                None => Err(BadRequest(StringError::new("Invalid token claims"))),
             },
         }
     }
