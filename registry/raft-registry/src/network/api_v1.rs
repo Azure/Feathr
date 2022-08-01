@@ -42,7 +42,7 @@ impl FeathrApiV1 {
         limit: Query<Option<usize>>,
     ) -> poem::Result<Json<Vec<String>>> {
         data.0
-            .check_permission(credential.0, None, Permission::Read)
+            .check_permission(credential.0, Some("global"), Permission::Read)
             .await?;
         data.0
             .request(
@@ -67,7 +67,7 @@ impl FeathrApiV1 {
         def: Json<ProjectDef>,
     ) -> poem::Result<Json<CreationResponse>> {
         data.0
-            .check_permission(credential.0, None, Permission::Write)
+            .check_permission(credential.0, Some("global"), Permission::Write)
             .await?;
         let mut definition = def.0;
         if definition.id.is_empty() {
