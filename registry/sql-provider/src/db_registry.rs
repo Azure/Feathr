@@ -820,6 +820,29 @@ where
             Resource::Global => Resource::Global,
         })
     }
+
+    pub(crate) async fn do_grant_permission(&mut self, grant: &RbacRecord) -> Result<(), RegistryError> {
+        // Permission already granted, no need to do anything
+        if self.check_permission(&grant.credential, &grant.resource, grant.permission)? {
+            return Ok(());
+        }
+
+        let mut grant = grant.clone();
+
+        // Resolve corresponding project id from the input resource
+        grant.resource = self.to_named_entity_resource(&grant.resource)?;
+
+        // Record permission granting info to the external storages
+        for storage in self.external_storage.iter() {
+            storage.write().await.grant_permission(&grant).await?;
+        }
+
+        grant.resource = self.to_entity_resource(&grant.resource)?;
+
+        // Update local data structure
+        self.permission_map.grant_permission(&grant);
+        Ok(())
+    }
 }
 
 #[cfg(test)]

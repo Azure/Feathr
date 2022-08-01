@@ -541,14 +541,14 @@ where
         if self.check_permission(&grant.credential, &grant.resource, grant.permission)? {
             return Ok(());
         }
-        
+
         // Any grant implies global read (to list projects) and grant write (to create project) permission
-        let mut grant = grant.clone();
-        grant.resource = Resource::Global;
-        grant.permission = Permission::Read;
-        self.grant_permission(&grant).await?;
-        grant.permission = Permission::Write;
-        self.grant_permission(&grant).await?;
+        let mut global_grant = grant.clone();
+        global_grant.resource = Resource::Global;
+        global_grant.permission = Permission::Read;
+        self.do_grant_permission(&global_grant).await?;
+        global_grant.permission = Permission::Write;
+        self.do_grant_permission(&global_grant).await?;
 
         let mut grant = grant.clone();
 
